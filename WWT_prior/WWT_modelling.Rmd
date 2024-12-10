@@ -196,14 +196,29 @@ confMatrix7 <- table(Actual = WWT.no.label,
 confMatrix7
 sum(diag(confMatrix7)) / length(WWT.no.label)
 ```
-
-
-
 #### Model Performance
+
+
+
 
 ### Regression 
 
 ### Artificial Neural Network Model
+```{r}
+library(keras)
+ANN <- keras_model_sequential()%>% 
+  layer_dense(units = 16, activation = 'relu', input_shape = c(6)) %>% 
+  layer_dense(units = 2, activation = 'softmax')
+
+
+ANN %>% compile(
+  loss  = 'categorical_crossentropy',
+  optimizer = optimizer_adam(), 
+  metrics = c('accuracy')
+)
+
+summary(model)
+```
 
 
 #### Model Performance
