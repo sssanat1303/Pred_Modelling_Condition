@@ -1,0 +1,2 @@
+"0","condition.tree2 <- rpart(condition_overall_score_label~., data = WWT.yes.train, cp =0.028751)"
+"0","plotcp(condition.tree2)"

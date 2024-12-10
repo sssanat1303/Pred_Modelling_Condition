@@ -122,32 +122,52 @@ summary(WWT.no$condition_overall_score_label)
 
 ```{r}
 
-set.seed(123)
+set.seed(749)
 sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
 WWT.yes.train <- WWT.yes[sample.index, ]
 WWT.yes.test <- WWT.yes[-sample.index, ]
 
-condition.tree1 <- rpart(condition_overall_score_label~., data = WWT.yes.train, cp=  0.023810)
+condition.tree1 <- rpart(condition_overall_score_label~., data = WWT.yes.train)
 plotcp(condition.tree1)
 ```
 ```{r}
-predict1 <- predict(condition.tree1, WWT.no, type = "class")
-confMatrix1 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict1)
+predict1 <- predict(condition.tree1, WWT.yes.test, type = "class")
+confMatrix1 <- table(Actual = WWT.yes.test$condition_overall_score_label, Predicted = predict1)
 confMatrix1
 ```
 
 ```{r}
-sum(diag(confMatrix1)) / nrow(WWT.no)
+sum(diag(confMatrix1)) / nrow(WWT.yes.test)
 ```
 ```{r}
-plot(condition.tree1, margin = 0.2)
+plot(condition.tree1, margin = 0.02)
 text(condition.tree1, pretty = 2)
 ```
 
 ```{r}
 printcp(condition.tree1)
 ```
-Pruned this tree to a cp of 0.023
+Pruned this tree to a cp of 0.028571
+
+```{r}
+condition.tree2 <- rpart(condition_overall_score_label~., data = WWT.yes.train, cp =0.028751)
+plotcp(condition.tree2)
+predict2 <- predict(condition.tree2, WWT.yes.test, type = "class")
+confMatrix2 <- table(Actual = WWT.yes.test$condition_overall_score_label, Predicted = predict2)
+confMatrix2
+sum(diag(confMatrix2)) / nrow(WWT.yes.test)
+plot(condition.tree2)
+```
+
+
+#### Prediction on low confidence dataset
+
+```{r}
+predict3 <- predict(condition.tree2, WWT.no, type = "class")
+confMatrix3 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict3)
+confMatrix3
+sum(diag(confMatrix3)) / nrow(WWT.no)
+```
 
 
 
@@ -155,15 +175,22 @@ Pruned this tree to a cp of 0.023
 
 
 ```{r}
-rf_model <- ranger(condition_overall_score_label ~ ., data = WWT.yes.train, trees = 1000 , mtry = 4)
-predict2 <- predict(rf_model, WWT.no, type = "response")
-confMatrix2 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict2)
-confMatrix2
-```
-```{r}
-sum(diag(confMatrix2)) / nrow(WWT.no)
+rf_model <- ranger(condition_overall_score_label ~ ., data = WWT.yes.train, trees = 10000, mtry = 5)
+predict4 <- predict(rf_model, WWT.yes.test)$predictions
+confMatrix4 <- table(Actual = WWT.yes.test$condition_overall_score_label, Predicted = predict4)
+confMatrix4
+sum(diag(confMatrix4)) / nrow(WWT.yes.test)
 ```
 
+
+#### Predictions on actual model
+
+```{r}
+predict5 <- predict(rf_model, WWT.no)$predictions
+confMatrix5 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict5)
+confMatrix5
+sum(diag(confMatrix5)) / nrow(WWT.no)
+```
 
 
 ### Gradient Boosting Model

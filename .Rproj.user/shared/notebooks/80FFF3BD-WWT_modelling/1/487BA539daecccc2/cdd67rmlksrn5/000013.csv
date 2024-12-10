@@ -1,4 +1,0 @@
-"0","rf_model <- ranger(condition_overall_score_label ~ ., data = WWT.yes.train, trees = 1000 , mtry = 4)
-"
-"2","Warning: Unused arguments: trees"
-"2","Warning: Dropped unused factor level(s) in dependent variable: 5."
