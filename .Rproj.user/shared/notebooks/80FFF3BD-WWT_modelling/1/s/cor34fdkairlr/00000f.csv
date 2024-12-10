@@ -1,0 +1,96 @@
+"0","library(ggplot2)"
+"0","library(tidyverse)"
+"0","library(readxl)"
+"0","library(lubridate)"
+"0","library(corrplot)"
+"0","library(naniar)"
+"0","library(keras)"
+"0","library(glmnet)"
+"2","Loading required package: Matrix
+"
+"2","
+Attaching package: ‘Matrix’
+
+"
+"2","The following objects are masked from ‘package:tidyr’:
+
+    expand, pack, unpack
+
+"
+"2","Loaded glmnet 4.1-8
+"
+"0","library(xgboost)"
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"2","
+Attaching package: ‘xgboost’
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    slice
+
+"
+"0","library(finalfit)"
+"0","library(rpart)"
+"0","library(MASS)"
+"2","
+Attaching package: ‘MASS’
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    select
+
+"
+"0","library(ranger)"
+"2","ranger 0.17.0 using 2 threads (default). Change with num.threads in ranger() and predict(), options(Ncpus = N), options(ranger.num.threads = N) or environment variable R_RANGER_NUM_THREADS.
+"
+"0","myfit <- function(train_df, test_df, a = 0){"
+"0","  "
+"0","  train_X <- as.matrix(train_df %>% dplyr::select(-Y))"
+"0","  train_y <- train_df$Y"
+"0","  test_X <- as.matrix(test_df %>% dplyr::select(-Y))"
+"0","  test-y <- test_df$Y"
+"0","  "
+"0","  "
+"0","  cv.fit <- glmnet(train_X, train_y, alpha = a, lambda = lambdas)"
+"0","  plot(cv.fit)"
+"0","  "
+"0","  "
+"0","  opt.1 <- cv.fit$lambda.min"
+"0","  opt.fit <- cv.fit$glmnet.fit"
+"0","  bets <- as.matrix(coef(opt.fit, s = cv.fit$lambda.min))"
+"0","  n_non0_betas <- sum(betas!=0)"
+"0","  "
+"0","  pred_y <- predict(opt.fit, s = opt.1, newx = test_X)"
+"0","  mse <- mean((test_y - pred_y)^2)"
+"0","  "
+"0","  "
+"0","  return(list(alpha = a, mse = mse, opt.lambda = opt.1, "
+"0","              n_non0_betas = n_non0_betas))"
+"0","  "
+"0","  "
+"0","}"
+"0",""
+"0",""
+"0","allyhat <- function(xtrain, ytrain, xtest, lambdas, nvmax) {"
+"0","  n <- nrow(xtrain)"
+"0","  yhat <- matrix(nrow=nrow(xtest), ncol=length(lambdas))"
+"0","  search <-  regsubsets(xtrain, ytrain, nvmax, method = ""back"")"
+"0","  summ <- summary(search)"
+"0","  "
+"0","  for(i in 1:length(lambdas)) {"
+"0","    penMSE <- n*log(summ$rss) + lambdas[i]*(1:nvmax)"
+"0","    best <- which.min(penMSE)"
+"0","    betahat <- coef(search, best)"
+"0","    xinmodel <- cbind(1, xtest)[,summ$which[best, ]]"
+"0","    yhat[, i] <- xinmodel%*%betahat"
+"0","  }"
+"0","  "
+"0","  yhat"
+"0","}"
+"0",""
+"0",""
