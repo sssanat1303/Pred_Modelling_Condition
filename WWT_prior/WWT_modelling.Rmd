@@ -121,6 +121,12 @@ Doesn't need any pruning
 ### Random Forest
 
 
+```{r}
+rf_model <- ranger(condition_overall_score_label ~ ., data = WWT.yes.train, trees = 500, mtry = 2)
+predict2 <- predict(rf_model, WWT.no, type = "response")
+confMatrix1 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict1)
+confMatrix1
+```
 
 
 
