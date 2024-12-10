@@ -20,57 +20,14 @@ library(rpart)
 library(MASS)
 library(ranger)
 
-myfit <- function(train_df, test_df, a = 0){
-  
-  train_X <- as.matrix(train_df %>% dplyr::select(-Y))
-  train_y <- train_df$Y
-  test_X <- as.matrix(test_df %>% dplyr::select(-Y))
-  test-y <- test_df$Y
-  
-  
-  cv.fit <- glmnet(train_X, train_y, alpha = a, lambda = lambdas)
-  plot(cv.fit)
-  
-  
-  opt.1 <- cv.fit$lambda.min
-  opt.fit <- cv.fit$glmnet.fit
-  bets <- as.matrix(coef(opt.fit, s = cv.fit$lambda.min))
-  n_non0_betas <- sum(betas!=0)
-  
-  pred_y <- predict(opt.fit, s = opt.1, newx = test_X)
-  mse <- mean((test_y - pred_y)^2)
-  
-  
-  return(list(alpha = a, mse = mse, opt.lambda = opt.1, 
-              n_non0_betas = n_non0_betas))
-  
-  
-}
-
-
-allyhat <- function(xtrain, ytrain, xtest, lambdas, nvmax) {
-  n <- nrow(xtrain)
-  yhat <- matrix(nrow=nrow(xtest), ncol=length(lambdas))
-  search <-  regsubsets(xtrain, ytrain, nvmax, method = "back")
-  summ <- summary(search)
-  
-  for(i in 1:length(lambdas)) {
-    penMSE <- n*log(summ$rss) + lambdas[i]*(1:nvmax)
-    best <- which.min(penMSE)
-    betahat <- coef(search, best)
-    xinmodel <- cbind(1, xtest)[,summ$which[best, ]]
-    yhat[, i] <- xinmodel%*%betahat
-  }
-  
-  yhat
-}
-
-
 ```
 
 
 ## Waste Water Transmission Network Modelling 
 
+```{r}
+WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))]
+```
 
 ### Creating Training and Testing Datasets
 
@@ -115,6 +72,12 @@ WWT.no <- WWT.no[-selected_rows,]
 summary(WWT.yes$condition_overall_score_label)
 summary(WWT.no$condition_overall_score_label)
 ```
+```{r}
+set.seed(749)
+sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
+WWT.yes.train <- WWT.yes[sample.index, ]
+WWT.yes.test <- WWT.yes[-sample.index, ]
+```
 
 
 ### Decision Tree 
@@ -122,32 +85,48 @@ summary(WWT.no$condition_overall_score_label)
 
 ```{r}
 
-set.seed(123)
-sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
-WWT.yes.train <- WWT.yes[sample.index, ]
-WWT.yes.test <- WWT.yes[-sample.index, ]
 
-condition.tree1 <- rpart(condition_overall_score_label~., data = WWT.yes.train, cp=  0.023810)
+condition.tree1 <- rpart(condition_overall_score_label~., data = WWT.yes.train)
 plotcp(condition.tree1)
 ```
 ```{r}
-predict1 <- predict(condition.tree1, WWT.no, type = "class")
-confMatrix1 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict1)
+predict1 <- predict(condition.tree1, WWT.yes.test, type = "class")
+confMatrix1 <- table(Actual = WWT.yes.test$condition_overall_score_label, Predicted = predict1)
 confMatrix1
 ```
 
 ```{r}
-sum(diag(confMatrix1)) / nrow(WWT.no)
+sum(diag(confMatrix1)) / nrow(WWT.yes.test)
 ```
 ```{r}
-plot(condition.tree1, margin = 0.2)
+plot(condition.tree1, margin = 0.02)
 text(condition.tree1, pretty = 2)
 ```
 
 ```{r}
 printcp(condition.tree1)
 ```
-Pruned this tree to a cp of 0.023
+Pruned this tree to a cp of 0.028571
+
+```{r}
+condition.tree2 <- rpart(condition_overall_score_label~., data = WWT.yes.train, cp =0.028751)
+plotcp(condition.tree2)
+predict2 <- predict(condition.tree2, WWT.yes.test, type = "class")
+confMatrix2 <- table(Actual = WWT.yes.test$condition_overall_score_label, Predicted = predict2)
+confMatrix2
+sum(diag(confMatrix2)) / nrow(WWT.yes.test)
+plot(condition.tree2)
+```
+
+
+#### Prediction on low confidence dataset
+
+```{r}
+predict3 <- predict(condition.tree2, WWT.no, type = "class")
+confMatrix3 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict3)
+confMatrix3
+sum(diag(confMatrix3)) / nrow(WWT.no)
+```
 
 
 
@@ -155,23 +134,74 @@ Pruned this tree to a cp of 0.023
 
 
 ```{r}
-rf_model <- ranger(condition_overall_score_label ~ ., data = WWT.yes.train, trees = 1000 , mtry = 4)
-predict2 <- predict(rf_model, WWT.no, type = "response")
-confMatrix2 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict2)
-confMatrix2
-```
-```{r}
-sum(diag(confMatrix2)) / nrow(WWT.no)
+rf_model <- ranger(condition_overall_score_label ~ ., data = WWT.yes.train, trees = 10000, mtry = 5)
+predict4 <- predict(rf_model, WWT.yes.test)$predictions
+confMatrix4 <- table(Actual = WWT.yes.test$condition_overall_score_label, Predicted = predict4)
+confMatrix4
+sum(diag(confMatrix4)) / nrow(WWT.yes.test)
 ```
 
+
+#### Predictions on actual model
+
+```{r}
+predict5 <- predict(rf_model, WWT.no)$predictions
+confMatrix5 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict5)
+confMatrix5
+sum(diag(confMatrix5)) / nrow(WWT.no)
+```
 
 
 ### Gradient Boosting Model
 
+```{r}
+# Convert data frames to matricies and make data and label sets 
+library(gbm)
+
+
+WWT.yes.train.matrix <- model.matrix(~. - 1, WWT.yes.train[, -1])
+WWT.yes.train.label <- as.integer(WWT.yes.train$condition_overall_score_label) - 1
+
+WWT.yes.test.matrix <- model.matrix(~. -1 , WWT.yes.test[,-1])
+WWT.yes.test.label <- as.integer(WWT.yes.test$condition_overall_score_label) -1 
+
+WWT.no <- na.omit(WWT.no)
+WWT.no.matrix <- model.matrix(~. -1 , WWT.no[,-1])
+WWT.no.label <- as.integer(WWT.no$condition_overall_score_label) -1
+
+```
+
+
+
+```{r}
+boosted.conditiontree1 <- xgboost(data = WWT.yes.train.matrix, label = WWT.yes.train.label, max_depth = 10, eta = 1, nthreads = 2, nrounds = 50, num_class = 6, objective = "multi:softmax", verbose = 1 )
+```
+
+```{r}
+xgb.plot.tree(model = boosted.conditiontree1)
+```
+
+
+```{r}
+pred6 <- predict(boosted.conditiontree1, WWT.yes.test.matrix)
+confMatrix6 <- table(Actual = WWT.yes.test.label, 
+      Predicted = pred6) 
+confMatrix6
+sum(diag(confMatrix6)) / nrow(WWT.yes.test.matrix)
+```
+```{r}
+pred7 <- predict(boosted.conditiontree1, WWT.no.matrix)
+confMatrix7 <- table(Actual = WWT.no.label, 
+      Predicted = pred7) 
+confMatrix7
+sum(diag(confMatrix7)) / length(WWT.no.label)
+```
+
+
 
 #### Model Performance
 
-
+### Regression 
 
 ### Artificial Neural Network Model
 

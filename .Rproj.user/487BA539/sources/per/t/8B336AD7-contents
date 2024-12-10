@@ -71,6 +71,10 @@ allyhat <- function(xtrain, ytrain, xtest, lambdas, nvmax) {
 
 ## Waste Water Transmission Network Modelling 
 
+```{r}
+WWT.modelling <- WWT.modelling %>%
+  select(condition_overall_score_label, everything())
+```
 
 ### Creating Training and Testing Datasets
 
@@ -194,6 +198,13 @@ sum(diag(confMatrix5)) / nrow(WWT.no)
 
 
 ### Gradient Boosting Model
+
+```{r}
+# Convert data frames to matricies and make data and label sets 
+
+
+```
+
 
 
 #### Model Performance

@@ -1,8 +1,0 @@
-"0",""
-"0","set.seed(123)"
-"0","sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))"
-"0","WWT.yes.train <- WWT.yes[sample.index, ]"
-"0","WWT.yes.test <- WWT.yes[-sample.index, ]"
-"0",""
-"0","condition.tree1 <- rpart(condition_overall_score_label~., data = WWT.yes.train, cp=  0.023810)"
-"0","plotcp(condition.tree1)"
