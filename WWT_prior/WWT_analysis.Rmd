@@ -1,0 +1,118 @@
+```{r}
+library(finalfit)
+
+WWT_prior %>% missing_plot()
+```
+In terms of missing patterns this is is completely acceptable. All the missingness around CCTV has to do with the dataset which we will be making predictions on i.e pipes without CCTV coverage that we need to understand the condition of. The only worry I would have is the fact that the data that we will be using to develop our models is less than the amount of data we will be making predicitons on, which is potentially a flaw in this workstream. The missingness that is present elsewhere in this dataset is to do with datasets that were used, so it will not be relevant when it comes to our predictive modelling. 
+
+
+Our goal now is to understand patterns within this dataset, especially in relation to what I will now refer to as "CCTV positive" data.  But first some very simple two way relationships with condition. 
+
+
+```{r}
+ggplot(WWT_prior, aes(x = MATERIAL, y = condition_overall_score, fill = MATERIAL)) + geom_boxplot() + labs(
+  title = "Relationship between Material and Condition",
+  x = "Material",
+  y = "Condition Score"
+)
+```
+```{r}
+ggplot(WWT_prior, aes(x = INSTALLED_YEAR, y = condition_overall_score, color = MATERIAL)) + geom_point() + labs(
+  x = "Year of installation",
+  y = "Condition Score",
+  title = "Relationship between the installation year of the pipe and it's condition"
+)
+
+
+WWT_prior <- WWT_prior %>%
+  mutate(age = 2024 - INSTALLED_YEAR)
+
+ggplot(WWT_prior, aes(x = age, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
+  x = "Age of pipe",
+  y = "Condition Score",
+  title = "Relationship between the age of the pipe and it's condition"
+)
+
+
+
+```
+
+
+
+```{r}
+ggplot(WWT_prior, aes(x = NOM_DIA_MM, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "gam", col = "blue") + labs(
+  x = "Nominal Diameter of Pipe",
+  y = "Condition Score",
+  title = "Relationship between nominal diameter of the pipe and it's condition"
+) +  xlim(0, 1500)
+```
+```{r}
+ggplot(WWT_prior, aes(x = LENGTH, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue")+ labs(
+  x = "Length of pipe",
+  y = "Condition Score",
+  title = "Relationship between the length of the pipe and it's condition"
+) + xlim(0, 1000)
+```
+
+
+
+```{r}
+ggplot(WWT_prior, aes(x = condition_overall_score)) + geom_histogram() + labs(x = "Distribution of condtion across our wastewater local network")
+```
+```{r}
+ggplot(WWT_prior, aes(x = LINING, y = condition_overall_score, fill = LINING)) + geom_boxplot() + labs(
+  title = "Relationship between Pipe Lining and Condition",
+  x = "Pipe Lining",
+  y = "Condition Score"
+)
+```
+```{r}
+ggplot(WWT_prior, aes(x = criticality_overall_score, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
+  x = "Criticality",
+  y = "Condition",
+  title = "Relationship between Crticality and Condition"
+)
+``` 
+^This is very good
+
+```{r}
+ggplot(WWT_prior, aes(x = condition_CCTV_app_availability, y = condition_overall_score)) + geom_violin() + labs(
+  title = "Relationship between the availability of CCTV and Condition",
+  x = "CCTV availability",
+  y = "Condition Score"
+) + theme_minimal()
+```
+```{r}
+ggplot(WWT_prior, aes(x = condition_CCTV_score, y = condition_overall_score)) + geom_jitter(width = 0.2, height = 0.2, alpha = 0.6)
+```
+highly correlated (makes a lot of sense)
+
+
+```{r}
+
+library(ggcorrplot)
+
+
+WWT_prior_numeric <- WWT_prior %>% select_if(is.numeric)
+WWT_prior_numeric <- WWT_prior_numeric %>% select(-OBJECTID)
+
+good.names <- WWT_prior_numeric %>% 
+  rename(Diameter = NOM_DIA_MM, Cond = condition_overall_score,
+         Cond_Label = condition_overall_score_label, Cond_CCTV = condition_CCTV_score, CCTV_Date = condition_CCTV_date, Cond_Instability = condition_instability_score, Cond_Corros = condition_corrosivity_score, Cond_Age = condition_age_score, Criticality = criticality_overall_score, 
+         Criticality_Label = criticality_overall_score_label, Criticality_Ops = criticality_operational_score, Criticality_Pipe = criticality_pipe_type_score, Criticality_People = criticality_people_impacts_score, Criticality_Enviro = criticality_environmental_impacts_score, Criticality_Failure = criticality_impact_of_failure_score, Criticality_Infil = criticality_infiltration_score, Criticality_Flow = criticality_flow_ratio,
+         Risk = `Risk-score`)
+
+
+
+#### Run Correlation ####
+good.corr <- cor(good.names)
+
+#### Replot ####
+p <- ggcorrplot::ggcorrplot(good.corr, 
+           type = "lower")
+
+
+p + theme(
+  axis.text.x = element_text(angle = 90, hjust = 1))
+
+```

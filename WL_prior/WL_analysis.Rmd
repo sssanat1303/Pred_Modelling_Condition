@@ -1,0 +1,13 @@
+Time to first failure analysis 
+Correlation Analysis 
+Material/Lining
+Age Analysis
+Failure Count Analysis
+Survival Analysis 
+Age and frequency of failure
+Key Customer Category Analysis
+Data Sources and Missing Data 
+Confidence Sources Analysis
+
+
+

@@ -1,0 +1,147 @@
+```{r include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+
+```
+
+
+
+```{r include = FALSE}
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(corrplot)
+library(naniar)
+library(keras)
+library(glmnet)
+library(xgboost)
+library(finalfit)
+library(rpart)
+library(MASS)
+library(ranger)
+
+myfit <- function(train_df, test_df, a = 0){
+  
+  train_X <- as.matrix(train_df %>% dplyr::select(-Y))
+  train_y <- train_df$Y
+  test_X <- as.matrix(test_df %>% dplyr::select(-Y))
+  test-y <- test_df$Y
+  
+  
+  cv.fit <- glmnet(train_X, train_y, alpha = a, lambda = lambdas)
+  plot(cv.fit)
+  
+  
+  opt.1 <- cv.fit$lambda.min
+  opt.fit <- cv.fit$glmnet.fit
+  bets <- as.matrix(coef(opt.fit, s = cv.fit$lambda.min))
+  n_non0_betas <- sum(betas!=0)
+  
+  pred_y <- predict(opt.fit, s = opt.1, newx = test_X)
+  mse <- mean((test_y - pred_y)^2)
+  
+  
+  return(list(alpha = a, mse = mse, opt.lambda = opt.1, 
+              n_non0_betas = n_non0_betas))
+  
+  
+}
+
+
+allyhat <- function(xtrain, ytrain, xtest, lambdas, nvmax) {
+  n <- nrow(xtrain)
+  yhat <- matrix(nrow=nrow(xtest), ncol=length(lambdas))
+  search <-  regsubsets(xtrain, ytrain, nvmax, method = "back")
+  summ <- summary(search)
+  
+  for(i in 1:length(lambdas)) {
+    penMSE <- n*log(summ$rss) + lambdas[i]*(1:nvmax)
+    best <- which.min(penMSE)
+    betahat <- coef(search, best)
+    xinmodel <- cbind(1, xtest)[,summ$which[best, ]]
+    yhat[, i] <- xinmodel%*%betahat
+  }
+  
+  yhat
+}
+
+
+```
+
+
+## Waste Water Transmission Network Modelling 
+
+
+### Creating Training and Testing Datasets
+
+The first thing to do would be to separate the WWT data set into CCTV positive and CCTV negative aand then further remove variables that are not going to inform our predictive models. 
+
+```{r}
+WWT.yes <- WWT.modelling %>% filter(condition_CCTV_app_availability == "yes")
+WWT.no <- WWT.modelling %>% filter(condition_CCTV_app_availability == "no")
+missing_plot(WWT.yes)
+missing_plot(WWT.no)
+
+```
+
+### Decision Tree 
+
+
+```{r}
+
+set.seed(123)
+sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
+WWT.yes.train <- WWT.yes[sample.index, ]
+WWT.yes.test <- WWT.yes[-sample.index, ]
+
+condition.tree1 <- rpart(condition_overall_score_label~., data = WWT.yes.train)
+plotcp(condition.tree1)
+```
+```{r}
+predict1 <- predict(condition.tree1, WWT.no, type = "class")
+confMatrix1 <- table(Actual = WWT.no$condition_overall_score_label, Predicted = predict1)
+confMatrix1
+```
+
+```{r}
+sum(diag(confMatrix1)) / nrow(WWT.no)
+```
+```{r}
+plot(condition.tree1, margin = 0.2)
+text(condition.tree1, pretty = 2)
+```
+
+```{r}
+printcp(condition.tree1)
+```
+Doesn't need any pruning 
+
+
+
+### Random Forest
+
+
+
+
+
+### Gradient Boosting Model
+
+
+#### Model Performance
+
+
+
+### Artificial Neural Network Model
+
+
+#### Model Performance
+
+
+
+
+## Model Choice and Justifcation 
+
+
+
+### Predictions on low confidence data and analysis of results
+
