@@ -26,7 +26,7 @@ library(ranger)
 ## Waste Water Transmission Network Modelling 
 
 ```{r}
-WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))]
+WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))] # nolint
 ```
 
 ### Creating Training and Testing Datasets
