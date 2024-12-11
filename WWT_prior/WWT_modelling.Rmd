@@ -31,7 +31,7 @@ WWT.modelling$condition_overall_score_label <- as.factor(WWT.modelling$condition
 ## Waste Water Transmission Network Modelling 
 
 ```{r}
-WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))] # nolint
+WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))] 
 ```
 
 ### Creating Training and Testing Datasets

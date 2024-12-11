@@ -1,0 +1,111 @@
+```{r include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+
+```
+
+
+
+
+
+```{r include = FALSE}
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(corrplot)
+library(naniar)
+library(keras)
+library(glmnet)
+library(xgboost)
+library(finalfit)
+library(rpart)
+library(MASS)
+library(ranger)
+
+
+WT.modelling <- read_csv("WT.modelling.csv")
+
+WT.modelling <- WT.modelling %>% mutate_if(is.character, as.factor)
+WT.modelling$condition_overall_score_label <- as.factor(WT.modelling$condition_overall_score_label)
+WT.modelling <- WT.modelling[c("condition_overall_score_label", setdiff(names(WT.modelling), "condition_overall_score_label"))] 
+  head(WT.modelling)
+WT.modelling <- WT.modelling[,-6]
+```
+
+
+```{r}
+set.seed(749)
+sample.index <- sample(1:nrow(WT.modelling), size = 0.8 * nrow(WT.modelling))
+WT.modelling.train <- WT.modelling[sample.index, ]
+WT.modelling.test <- WT.modelling[-sample.index, ]
+
+
+rows_to_move <- which(WT.modelling.train$condition_overall_score_label == "5")
+selected_rows <- sample(rows_to_move, 1)
+
+WT.modelling.test <- WT.modelling.test %>% rbind(WT.modelling.train[selected_rows, ])
+WT.modelling.train <- WT.modelling.train[-selected_rows,]
+```
+
+
+### Decision Tree
+
+```{r}
+condition.tree1 <- rpart(condition_overall_score_label~., data = WT.modelling)
+plotcp(condition.tree1)
+printcp(condition.tree1)
+```
+```{r}
+predict1 <- predict(condition.tree1, WT.modelling.test, type = "class")
+confMatrix1 <- table(Actual = WT.modelling.test$condition_overall_score_label, Predicted = predict1)
+confMatrix1
+```
+```{r}
+sum(diag(confMatrix1)) / nrow(WT.modelling.test)
+```
+```{r}
+plot(condition.tree1, margin = 0.05)
+text(condition.tree1, cex = 0.6)
+```
+
+
+
+### Random Forest
+
+```{r}
+rf_model <- ranger(condition_overall_score_label ~ ., data = WT.modelling.train, trees = 10000, mtry = 5)
+predict2 <- predict(rf_model, WT.modelling.test)$predictions
+confMatrix2 <- table(Actual = WT.modelling.test$condition_overall_score_label, Predicted = predict2)
+confMatrix2
+sum(diag(confMatrix2)) / nrow(WT.modelling.test)
+summary(rf_model)
+```
+
+### Gradient Boosting
+
+```{r}
+WT.modelling.train.matrix <- model.matrix(~. - 1, WT.modelling.train[, -1])
+WT.modelling.train.label <- as.integer(WT.modelling.train$condition_overall_score_label) - 1
+
+WT.modelling.test.matrix <- model.matrix(~. -1 , WT.modelling.test[,-1])
+WT.modelling.test.label <- as.integer(WT.modelling.test$condition_overall_score_label) -1 
+```
+
+
+```{r}
+boosted.conditiontree1 <- xgboost(data = WT.modelling.train.matrix, label = WT.modelling.train.label, max_depth = 10, eta = 1, nthreads = 2, nrounds = 50, num_class = 6, objective = "multi:softmax", verbose = 1 )
+```
+
+```{r}
+xgb.plot.tree(model = boosted.conditiontree1)
+```
+
+```{r}
+predict3 <- predict(boosted.conditiontree1, WT.modelling.test.matrix)
+confMatrix3 <- table(Actual = WT.modelling.test.label, 
+      Predicted = predict3) 
+confMatrix3
+sum(diag(confMatrix3)) / nrow(WT.modelling.test.matrix)
+```
+
+### Artifical Neural Network
