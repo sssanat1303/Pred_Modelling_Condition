@@ -20,6 +20,11 @@ library(rpart)
 library(MASS)
 library(ranger)
 
+
+WWT.modelling <- read_csv("WWT.modelling.csv")
+
+WWT.modelling <- WWT.modelling %>% mutate_if(is.character, as.factor)
+WWT.modelling$condition_overall_score_label <- as.factor(WWT.modelling$condition_overall_score_label)
 ```
 
 
@@ -200,25 +205,8 @@ sum(diag(confMatrix7)) / length(WWT.no.label)
 
 
 
-
-### Regression 
-
 ### Artificial Neural Network Model
-```{r}
-library(keras)
-ANN <- keras_model_sequential()%>% 
-  layer_dense(units = 16, activation = 'relu', input_shape = c(6)) %>% 
-  layer_dense(units = 2, activation = 'softmax')
 
-
-ANN %>% compile(
-  loss  = 'categorical_crossentropy',
-  optimizer = optimizer_adam(), 
-  metrics = c('accuracy')
-)
-
-summary(model)
-```
 
 
 #### Model Performance
@@ -230,5 +218,7 @@ summary(model)
 
 
 
-### Predictions on low confidence data and analysis of results
+
+
+
 

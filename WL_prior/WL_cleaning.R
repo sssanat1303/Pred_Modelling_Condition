@@ -57,6 +57,8 @@ WL_prior <- WL_prior %>% select(-LINING)
 #After this we should eliminate the breakdates column and then get rid of all the duplicates in the original data frame
 #After getting rid of all the duplicates in the original data frame we can merge the failure counts back to the original data frame
 
+# Also want to create a seperate dataframe which has time to first failure for each pipe with the count of how many pipes for each time to first failure
+
 
 
 WL_prior <- WL_prior %>%

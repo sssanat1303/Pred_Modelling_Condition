@@ -112,4 +112,5 @@ WWT.modelling <- WWT.modelling %>% select(-condition_overall_score)
 
     
 
-
+write.csv(WWT.modelling, "WWT.modelling.csv", row.names = FALSE)
+write.csv(WWT.analysis,"WWT.analysis.csv", row.names = FALSE)
