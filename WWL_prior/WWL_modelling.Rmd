@@ -1,0 +1,78 @@
+```{r include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+
+```
+
+
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(corrplot)
+library(naniar)
+library(keras)
+library(glmnet)
+library(xgboost)
+library(finalfit)
+library(rpart)
+library(MASS)
+library(ranger)
+
+
+WWL.modelling <- read_csv("WWL.modelling.csv")
+
+WWL.modelling <- WWL.modelling %>% mutate_if(is.character, as.factor)
+WWL.modelling$condition_overall_score_label <- as.factor(WWL.modelling$condition_overall_score_label)
+head(WWL.modelling)
+```
+
+
+
+## Waste Water Local Network Predictive Modelling
+
+```{r}
+WWL.modelling <- WWL.modelling[c("condition_overall_score_label", setdiff(names(WWL.modelling), "condition_overall_score_label"))] 
+```
+
+
+### Dealing with missing data 
+
+
+```{r}
+missing_plot(WWL.modelling)
+```
+```{r}
+library(dplyr)
+WWL.modelling$Depth[is.na(WWL.modelling$Depth)] <- 0
+
+WWL.modelling <- WWL.modelling[, !(colnames(WWL.modelling) %in% c(
+  "condition_CCTV_INSP_Date",
+  "condition_CCTV_Rank",
+  "condition_STR_GRADE",
+  "condition_PK_GRADE",
+  "condition_STR_MEAN_S",
+  "condition_last_recorded_overflow"
+))]
+
+WWL.modelling$condition_flushing_expected_issue <- addNA(WWL.modelling$condition_flushing_expected_issue)
+levels(WWL.modelling$condition_flushing_expected_issue)[is.na(levels(WWL.modelling$condition_flushing_expected_issue))] <- "None"
+
+
+WWL.modelling$condition_overflow_main_blockage_type <- addNA(WWL.modelling$condition_overflow_main_blockage_type)
+levels(WWL.modelling$condition_overflow_main_blockage_type)[is.na(levels(WWL.modelling$condition_overflow_main_blockage_type))] <- "None"
+
+
+WWL.modelling$condition_total_number_of_overflows[is.na(WWL.modelling$condition_total_number_of_overflows)] <- 0
+
+missing_plot(WWL.modelling)
+```
+
+
+### Creating training and testing data sets
+
+```{r}
+
+```
+
