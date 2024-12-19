@@ -19,7 +19,7 @@ library(finalfit)
 library(rpart)
 library(MASS)
 library(ranger)
-
+library(randomForest)
 
 WWL.modelling <- read_csv("WWL.modelling.csv")
 
@@ -68,11 +68,88 @@ WWL.modelling$condition_total_number_of_overflows[is.na(WWL.modelling$condition_
 
 missing_plot(WWL.modelling)
 ```
+```{r}
+WWL.modelling <- WWL.modelling[, !(colnames(WWL.modelling) %in% c(
+  "SHAPE_Length",
+  "constructability_overall_score",
+  "Risk-score",
+  "condition_flushing_expected_issue",
+  "conditiion_overall_score_label"
+))]
+
+```
 
 
 ### Creating training and testing data sets
 
 ```{r}
 
+WWL.modelling <- WWL.modelling[, !(colnames(WWL.modelling) %in% c(
+  "condition_overall_score",
+  "Suburb"
+))]
+
+
+WWL.modelling$condition_cctv_structural_condition_score <- as.factor(WWL.modelling$condition_cctv_structural_condition_score)
+
+WWL.yes <- filter(WWL.modelling, condition_Confidence_Scenario == "CCTV Available")
+WWL.no <- filter(WWL.modelling, condition_Confidence_Scenario == "CCTV NOT Available")
+
+
+WWL.yes <- WWL.yes[, !(colnames(WWL.modelling) %in% c(
+  "condition_Confidence_Scenario"
+))]
+
+
+WWL.no <- WWL.no[, !(colnames(WWL.modelling) %in% c(
+  "condition_Confidence_Scenario"
+))]
 ```
+
+
+### Decision Tree
+
+
+
+```{r}
+condition.tree1 <- rpart(condition_cctv_structural_condition_score~., data = WWL.yes,)
+plot(condition.tree1)
+printcp(condition.tree1)
+```
+
+
+```{r}
+predict1 <- predict(condition.tree1, WWL.no)
+confMatrix1 <- table(Actual = WWL.no, Predicted = predict1)
+confMatrix1
+```
+
+
+```{r}
+sum(diag(confMatrix1)) / nrow(WWL.no)
+```
+```{r}
+plot(condition.tree1, margin = 0.02)
+text(condition.tree1, pretty = 2)
+```
+
+```{r}
+printcp(condition.tree1)
+```
+
+
+### Random Forest
+
+
+
+```{r}
+rf_model <- ranger(condition_overall_score_label ~ ., data = WWL.yes, trees = 100000, mtry = 5, case.weights = case_weights)
+predict4 <- predict(rf_model, WWL.no)$predictions
+confMatrix4 <- table(Actual = WWL.no$condition_overall_score_label, Predicted = predict4)
+confMatrix4
+sum(diag(confMatrix4)) / nrow(WWL.no)
+```
+
+
+
 
