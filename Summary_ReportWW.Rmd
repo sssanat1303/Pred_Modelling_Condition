@@ -1,0 +1,573 @@
+---
+---
+---
+
+# Wastewater Network Modelling
+
+```{r}
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(corrplot)
+library(naniar)
+library(keras)
+library(glmnet)
+library(xgboost)
+library(finalfit)
+library(rpart)
+library(MASS)
+library(ranger)
+
+```
+
+# Introduction:
+
+The purpose of this report is to provide a high level overview of a data science process undertaken to understand statistical patterns in the condition of pipes across Wastewater Transmission and Local Networks. The primary purpose of this process is to develop predictive models which can taken parameters of a given pipe and predict it's condition. This is especially useful when considering that there is not full coverage of CCTV across pipes in the network. Where there is an absence of CCTV and an understanding of other fundamental parameters, we may be able to use these predictive models to further our understanding of the structural condition of these pipes.
+
+This process is structured in three parts.
+
+1.  Cleaning: Where large datasets have been cleaned and are ready for further processing or useful analysis.
+2.  Analysis: Where exploratory data analysis is undertaken to understand the integrity of the data, patterns present across variables (correlation) and whether there is a basis to create a predictive model.
+3.  Modelling: Where data is prepared and then inputted into several different predictive models. In this process training and testing datasets would be produced and then used in order to prepare models and validate them.
+
+The modelling process that was undertaken was done to accomplish three goals:
+
+1.  To develop predictive models that took a complex parameter space and outputted an overall condition score for a given pipe. The models used in this process were Decision Trees, Random Forests and Gradient Boosted Trees. There was an attempt to fit Neural Networks for this purpose with little success (the predictive accuracy was simply not up to scratch, this makes sense given that Neural Networks are optimized for tensor driven data)
+2.  To develop predictive models that took a complex parameter space and outputted a CCTV condition score for a given pipe that didn't have CCTV coverage. The models used in this process were Decision Trees, Random Forests and Gradient Boosted Trees. There was also an attempt to fit Neural Networks for this purpose with little success for the same reasons as above.
+3.  To develop segmented models that use a one variable parameter space to predict the CCTV condition score for a given pipe. The models used in this process were Multinomal Logistic Regression Models, Decision Trees, Random Forests and Support Vector Machine Models. The SVM Models were used as benchmarks, as there is too much complexity present in an SVM to use as a practical predictor.
+
+This report does not walk through the process of cleaning, analysis or modelling in it's entirtey. Instead it showcases and presents key results that I believed to accomplish the goals that have been set out for this report. More detailed code, process and analysis can be found in this code repository. This is also where all of the raw data was located: <https://github.com/sssanat1303/Pred_Modelling_Condition.git>
+
+At the conclusion of this process, I believe that there is strong grounds for the usage of predictive modelling to aid wider condition scoring frameworks. I also believe there is scope to develop models that can give specific time frames for failure, so that we can develop temporal risk models that help us better allocate resourcing for prioritization.
+
+# Loading and preparing clean datasets:
+
+Our data is split into two subsets. One subset is optimized for the analysis process and one subset is optimized for the modelling process. A little bit of cleaning is required and is documented so that the reader understands some of the constraints of the data as well.
+
+1.  Wastewater Local Analysis
+
+```{r}
+WWL.analysis <- read_csv("WWL_prior/WWL.analysis.csv")
+WWL.analysis %>% missing_plot()
+```
+
+2.  Wastewater Transmission Analysis
+
+```{r}
+WWT.analysis <- read_csv("WWT_prior/WWT.analysis.csv")
+WWT.analysis %>% missing_plot()
+```
+
+3.  Wastewater Local Modelling
+
+```{r}
+WWL.modelling <- read_csv("WWL_prior/WWL.modelling.csv")
+
+WWL.modelling <- WWL.modelling %>% mutate_if(is.character, as.factor)
+WWL.modelling$condition_overall_score_label <- as.factor(WWL.modelling$condition_overall_score_label)
+head(WWL.modelling)
+```
+
+4.  Wastewater Transmission Modelling
+
+```{r}
+WWT.modelling <- read_csv("WWT_prior/WWT.modelling.csv")
+
+WWT.modelling <- WWT.modelling %>% mutate_if(is.character, as.factor)
+WWT.modelling$condition_overall_score_label <- as.factor(WWT.modelling$condition_overall_score_label)
+head(WWT.modelling)
+```
+
+# Wastewater Transmission Network:
+
+## Analysis:
+
+#### Correllation Analysis:
+
+```{r}
+
+library(ggcorrplot)
+
+WWT.analysis$condition_CCTV_score <- as.numeric(ifelse(WWT.analysis$condition_CCTV_score == "None", 0, WWT.analysis$condition_CCTV_score))
+
+WWT.analysis <- WWT.analysis %>%
+  mutate(age = 2024 - INSTALLED)
+
+WWT.analysis.numeric <- WWT.analysis %>% select_if(is.numeric)
+
+
+
+
+good.names <- WWT.analysis.numeric %>% 
+  rename(
+    Diameter = `NOM_DIA_MM`,
+    Cond = `condition_overall_score`,
+    Cond_Label = `condition_overall_score_label`,
+    Cond_Instability = `condition_instability_score`,
+    Cond_Corros = `condition_corrosivity_score`,
+    Cond_Age = `condition_age_score`,
+    Criticality = `criticality_overall_score`,
+    Criticality_Label = `criticality_overall_score_label`,
+    Criticality_Ops = `criticality_operational_score`,
+    Criticality_Pipe = `criticality_pipe_type_score`,
+    Criticality_People = `criticality_people_impacts_score`,
+    Criticality_Enviro = `criticality_environmental_impacts_score`,
+    Criticality_Failure = `criticality_impact_of_failure_score`,
+    Criticality_Infil = `criticality_infiltration_score`,
+    Criticality_Flow = `criticality_flow_ratio`,
+    Risk = `Risk-score`,
+    CCTV = `condition_CCTV_score`,
+    Age = `age`
+  )
+
+
+#### Run Correlation ####
+good.corr <- cor(good.names)
+
+#### Replot ####
+p <- ggcorrplot::ggcorrplot(good.corr, lab_size = 2)
+
+
+p + theme(
+  axis.text.x = element_text(angle = 90))
+
+
+```
+
+This is a correlation plot which tells us the general relationship between each of the variables. This is constrained to numerical variables rather than categorical variables, however, there are some key insights.
+
+#### General Trends:
+
+```{r}
+ggplot(WWT.analysis, aes(x = MATERIAL, y = condition_overall_score, fill = MATERIAL)) + geom_boxplot() + labs(
+  title = "Relationship between Material and Condition",
+  x = "Material",
+  y = "Condition Score"
+)
+```
+
+```{r}
+ggplot(WWT.analysis, aes(x = INSTALLED, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
+  x = "Year of installation",
+  y = "Condition Score",
+  title = "Relationship between the installation year of the pipe and it's condition"
+)
+
+```
+
+```{r}
+ggplot(WWT.analysis, aes(x = NOM_DIA_MM, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "gam", col = "blue") + labs(
+  x = "Nominal Diameter of Pipe",
+  y = "Condition Score",
+  title = "Relationship between nominal diameter of the pipe and it's condition"
+) +  xlim(0, 1500)
+```
+
+```{r}
+ggplot(WWT.analysis, aes(x = LENGTH, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue")+ labs(
+  x = "Length of pipe",
+  y = "Condition Score",
+  title = "Relationship between the length of the pipe and it's condition"
+) + xlim(0, 1000)
+```
+
+```{r}
+ggplot(WWT.analysis, aes(x = criticality_overall_score, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
+  x = "Criticality",
+  y = "Condition",
+  title = "Relationship between Crticality and Condition"
+)
+```
+
+```{r}
+ggplot(WWT.analysis, aes(x = condition_CCTV_app_availability, y = condition_overall_score)) + geom_violin() + labs(
+  title = "Relationship between the availability of CCTV and Condition",
+  x = "CCTV availability",
+  y = "Condition Score"
+) + theme_minimal()
+```
+
+## Modelling
+
+#### High Dimensional Model on Overall Condition
+
+```{r}
+WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))] 
+```
+
+#### Creating Training and Testing datasets
+
+In the Wastewater Transmission Network we have high confidence data (pipes where CCTV was available) and low confidence data (pipes where CCTV was unavailable). It was important the models we developed were using training data that were of high confidence. Naturally the testing dataset would then be made of low confidence data, as the goal of our models are to predict condition in the absence of CCTV. The only drawback of this was the fact that the training dataset was 10 times smalleer than the testing dataset which is bad data science practice. This is amended later on in the validation phase. Here we are processing the data so that it is ready for use.
+
+```{r}
+WWT.yes <- WWT.modelling %>% filter(condition_CCTV_app_availability == "yes")
+WWT.no <- WWT.modelling %>% filter(condition_CCTV_app_availability == "no")
+missing_plot(WWT.yes)
+missing_plot(WWT.no)
+
+```
+
+```{r}
+WWT.yes <- WWT.yes[, -9]
+WWT.no <- WWT.no[, -9]
+```
+
+Unfortunately, when we do this split, the pipes with CCTV availability also don't have any pipes with a condition of 5. This means that our model will have no knowledge on how to predict level 5 condition pipes.
+
+We need to maintain a distribution of our condition that is consistent with our population dataset.
+
+```{r}
+summary(WWT.modelling$condition_overall_score_label)
+```
+
+```{r}
+summary(WWT.yes$condition_overall_score_label)
+summary(WWT.no$condition_overall_score_label)
+```
+
+I think the only statistically sound way to fix this is to migrate some low confidence data to the high confidence data (map some pipes from no cctv availability to yes cctv availability)
+
+```{r}
+set.seed(123)
+rows_to_move <- which(WWT.no$condition_overall_score_label == "5")
+num_to_select <- min(10, length(rows_to_move))
+selected_rows <- sample(rows_to_move, num_to_select)
+
+WWT.yes <- WWT.yes %>% rbind(WWT.no[selected_rows, ])
+WWT.no <- WWT.no[-selected_rows,]
+
+
+summary(WWT.yes$condition_overall_score_label)
+summary(WWT.no$condition_overall_score_label)
+```
+
+```{r}
+set.seed(749)
+sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
+WWT.yes.train <- WWT.yes[sample.index, ]
+WWT.yes.test <- WWT.yes[-sample.index, ]
+```
+
+The chosen model with the highest accuracy was a gradient boosted tree. This is a machine learning algorithim that is used for both regression and classification problems. The case that we are working with involves predicting 1 of 5 categories and is therefore a classification problem. With a gradient boosted tree, we fit an initial decision tree. The algorithim then undergoes a validation process and fits a new decision tree on the residulas (mis-classification rate) of the previous tree. Due to the complexity of this tree, it is not a very explainable model. In other terms, we can't point to specific parts of the model to explain why certain pipes have certain condition. However, due to our previous statistical analysis, I believe the complexity of this model to already be explained. We know why certain pipes will have certain conditions due to the established correlations.
+
+Below we are preparing our datasets to be useful in this sort of model. Gradient boosted models only use matricies.
+
+```{r}
+library(gbm)
+
+
+WWT.yes.train.matrix <- model.matrix(~. - 1, WWT.yes.train[, -1])
+WWT.yes.train.label <- as.integer(WWT.yes.train$condition_overall_score_label) - 1
+
+WWT.yes.test.matrix <- model.matrix(~. -1 , WWT.yes.test[,-1])
+WWT.yes.test.label <- as.integer(WWT.yes.test$condition_overall_score_label) -1 
+
+WWT.no <- na.omit(WWT.no)
+WWT.no.matrix <- model.matrix(~. -1 , WWT.no[,-1])
+WWT.no.label <- as.integer(WWT.no$condition_overall_score_label) -1
+```
+
+We then use xgboost, which is a gradient boosting framework to train our model. There are several parameters that we can use for an xgboost model, however these are configured very basically. We can then undergo a regularization process (if the model is overfitting on training data and giving us predictions that are too good to be true) and an optimization process (to improve the model's performance in terms of error and time). After doing that, we can undergo a validation process where we test this model against
+
+```{r}
+boosted.conditiontree <- xgboost(data = WWT.yes.train.matrix, label = WWT.yes.train.label, max_depth = 10, eta = 1, nthreads = 2, nrounds = 50, num_class = 6, objective = "multi:softmax", verbose = 1 )
+```
+
+Here we do a sample prediction on a small set of high confidence dataset, to assess how well this boosted tree works. We also calculate the classification rate, which will be a reoccuring metric of performance alongside other more stastically sound measures of performance for our models. The number that it produces is the classification rate, the closer this value is to 1 the better the predictions are.
+
+```{r}
+pred <- predict(boosted.conditiontree, WWT.yes.test.matrix)
+
+confMatrix <- table(Actual = WWT.yes.test.label, 
+      Predicted = pred) 
+
+confMatrix
+
+sum(diag(confMatrix)) / nrow(WWT.yes.test.matrix)
+```
+
+#### High Dimensional Model on CCTV Condition
+
+We decided to use the same model for predicting the structural condition of the pipe (it's CCTV score). It vastly outperformed the other models used and performed well when asked to make predictions on a small high confidence dataset.
+
+Preparing testing and training datasets in the same way again.
+
+```{r}
+# Convert data frames to matricies and make data and label sets 
+library(gbm)
+
+
+WWT.yes.train.matrix <- model.matrix(~. - 1, WWT.yes.train[, -1])
+WWT.yes.train.label <- as.integer(WWT.yes.train$condition_CCTV_score) - 1
+
+WWT.yes.test.matrix <- model.matrix(~. -1 , WWT.yes.test[,-1])
+WWT.yes.test.label <- as.integer(WWT.yes.test$condition_CCTV_score) -1 
+
+WWT.no <- na.omit(WWT.no)
+WWT.no.matrix <- model.matrix(~. -1 , WWT.no[,-1])
+WWT.no.label <- as.integer(WWT.no$condition_CCTV_score) -1
+
+```
+
+Creating a new condition tree that is trained to predict the structural CCTV score.
+
+```{r}
+boosted.conditiontree1 <- xgboost(data = WWT.yes.train.matrix, label = WWT.yes.train.label, max_depth = 3, min_child_weight = 5, eta = 1, nthreads = 2, nrounds = 20, num_class = 6, objective = "multi:softmax", verbose = 1, lambda = 1 )
+```
+
+```{r}
+xgb.plot.tree(model = boosted.conditiontree1)
+```
+
+```{r}
+pred <- predict(boosted.conditiontree1, WWT.yes.test.matrix)
+confMatrix <- table(Actual = WWT.yes.test.label, 
+      Predicted = pred) 
+confMatrix
+sum(diag(confMatrix)) / nrow(WWT.yes.test.matrix)
+```
+
+One important thing to keep in mind is that the CCTV condition score is almost independent of the other variables. In contrast the overall condition score is a derived quantity, highly correlated and therefore not independent of the predictor variables. This makes it much easier for a predictive model to correctly predict the correct outcomes. However, when bench marked against more complex models, this classification rate for a GBT on the CCTV condition is acceptable and can be improved + scaled further.
+
+#### Low Dimensional Modelling (Segmentation)
+
+We fitted models for several different variables that we thought had important relationships with the CCTV condition of the pipe. These variables include the material of the pipe, the nominal diameter of the pipe, the age of the pipe, it's instability score and it's corrosivity score.
+
+Since these are segmented, non-complex models, these are not suitable for prediction. They simply do not scale for proper deployment, if for example, we were looking to have more regular reporting on the condition of the pipes. The code required to fit a model and then produce predictions with that code, and then apply several models for several different predictors at once is impractical. The more pragmatic approach would be to use a model (such as the gradient boosted tree) which can take a more complex, multi-variate parameter space to make predictions. This is much more scalable and easier to optimize.
+
+The primary purpose of this is to understand the relationships between individual variables. When statistically sound relationships are found between quantities then that can feed into the condition scoring framework as it helps in the development of weightings for certain factors. Especially when it comes to Material and Age.
+
+We used several different models in this process. Once again, only the best performing models, or most insightful models for each variable were reported. In doing so we can use these immediate results to inform the way the condition scoring is structured.
+
+#### Preparation of data: 
+
+```{r}
+WWT.modelling <- read_csv("WWT_prior/WWT.modelling.csv")
+WWT.modelling <- WWT.modelling %>% mutate_if(is.character, as.factor)
+
+```
+
+```{r}
+WWT.yes <- WWT.modelling %>% filter(condition_CCTV_app_availability == "yes")
+WWT.no <- WWT.modelling %>% filter(condition_CCTV_app_availability == "no")
+missing_plot(WWT.yes)
+missing_plot(WWT.no)
+
+```
+
+```{r}
+WWT.yes <- WWT.yes %>% dplyr::select(-condition_CCTV_app_availability)
+WWT.no <- WWT.no %>% dplyr::select(-condition_CCTV_app_availability)
+
+```
+
+```{r}
+summary(WWT.modelling$condition_CCTV_score)
+```
+
+```{r}
+summary(WWT.yes$condition_CCTV_score)
+summary(WWT.no$condition_CCTV_score)
+```
+
+```{r}
+set.seed(123)
+rows_to_move <- which(WWT.no$condition_CCTV_score== "5")
+num_to_select <- min(5, length(rows_to_move))
+selected_rows <- sample(rows_to_move, num_to_select)
+
+WWT.yes <- WWT.yes %>% rbind(WWT.no[selected_rows, ])
+WWT.no <- WWT.no[-selected_rows,]
+
+
+summary(WWT.yes$condition_CCTV_score)
+summary(WWT.no$condition_CCTV_score)
+```
+
+```{r}
+WWT.yes <- WWT.yes %>% filter(condition_CCTV_score != "None")
+WWT.no <- WWT.no %>% filter(condition_CCTV_score != "None")
+```
+
+```{r}
+set.seed(749)
+sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
+WWT.yes.train <- WWT.yes[sample.index, ]
+WWT.yes.test <- WWT.yes[-sample.index, ]
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+
+```
+
+A new function for predictions to speed up this process
+
+```{r}
+predictor1 <- function(model, data){
+  
+  prediction <- predict(model, data)$predictions 
+  confMatrix <- table(Actual = data$condition_CCTV_score, Predicted = prediction)
+  print(confMatrix)
+  print(sum(diag(confMatrix)) / nrow(data))
+}
+predictor2 <- function(model, data){
+  
+  prediction <- predict(model, data)
+  confMatrix <- table(Actual = data$condition_CCTV_score, Predicted = prediction)
+  print(confMatrix)
+  print(sum(diag(confMatrix)) / nrow(data))
+}
+predictor3 <- function(model, data){
+  
+  prediction <- predict(model, data, type = "class")
+  confMatrix <- table(Actual = data$condition_CCTV_score, Predicted = prediction)
+  print(confMatrix)
+  print(sum(diag(confMatrix)) / nrow(data))
+}
+```
+
+#### Material
+
+A multinomal regression model was used. This is where separate regression lines are fit for each category of the response variable. In practice this means that each Material (which is a categorical variable) will have a numerical coefficient associated with outlining the affect it has on the CCTV condition score (which is also a categorical variable.
+
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+There are useful insights in the above block of information.
+
+1.  That this model would not be particularly useful when it came to predictions
+2.  That each material has a different numerical coefficient, this is useful when considering what effect a given material would have on the condition and whether some materials perform better than others.
+3.  That this model's metrics mean it is unsuitable for any further statistical analysis.
+
+```{r}
+condition.tree <- rpart(condition_CCTV_score~ MATERIAL, data = WWT.yes.train)
+plotcp(condition.tree)
+plot(condition.tree, margin = 0.02)
+text(condition.tree, pretty = 2)
+```
+
+This decision tree model is also not useful when it comes to making predictions on new or unknown data, however it does a good job of telling us which materials are most consequential when it comes to the condition of the pipe.
+
+#### Installation Date
+
+We have to do some transformations to extract the age from the Installation Date.
+
+```{r}
+WWT.yes.train <- WWT.yes.train %>%
+  mutate(age = 2024 - INSTALLED)
+
+WWT.yes.test <- WWT.yes.test%>%
+  mutate(age = 2024 - INSTALLED)
+WWT.no <- WWT.no %>%
+  mutate(age = 2024 - INSTALLED)
+WWT.no.test <- WWT.no.test %>%
+  mutate(age = 2024 - INSTALLED)
+
+```
+
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ age, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+This multi-nomal regression model tells us that there is a positive correlation between age and the CCTV score. That is as expected. We can once again see that this model is not useful for prediction, however it is important to notice that our coefficients for age have marginal differences. To me that indicates that the weighting for age across different condition scores needn't be very different or drastic.
+
+Decision Tree Model
+
+```{r}
+condition.tree <- rpart(condition_CCTV_score~ age, data = WWT.yes.train)
+plotcp(condition.tree)
+
+```
+
+```{r}
+predictor3(condition.tree, WWT.yes.test)
+plot(condition.tree, margin = 0.02)
+text(condition.tree, pretty = 2)
+```
+
+This very simple Decision Tree essentially helps us split the pipes into two distinct groups. Here we can see that it is those pipes that are installed 23 years ago and after, and those pipes that are installed 105 years and after. We could potentially use these markers for when deciding what the condition score for age should be, depending on the age. I believe this tree would be very useful.
+
+#### Nominal Diameter
+
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ NOM_DIA_MM, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+This is a fairly poor model which doesn't tell us very much about the nominal diameter's relationship with the condition score. This could be an indication that structurally the nominal diameter is potentially not the right quantity to be using. This was also found to be the case in some of our higher dimensional modelling where Nominal Diameter didn't seem to have that much of an effect on the final result as compared to other predictors.
+
+```{r}
+condition.tree <- rpart(condition_CCTV_score~ NOM_DIA_MM, data = WWT.yes.train)
+plotcp(condition.tree)
+
+```
+
+```{r}
+predictor3(condition.tree, WWT.yes.test)
+plot(condition.tree, margin = 0.02)
+text(condition.tree, pretty = 2)
+```
+
+The simplicity of this tree indicates to us what we already know. That this predictor possibly does not have the insight that we need. More work and research needs to be done around
+
+### Model Optimization and Regularization 
+
+#### Regularization of Models:
+
+Regularization involves making sure that the model doesn't overfit and is better suited for predictions. Especially when data is continually updated, the model needs to be as general as possible so that is able to make new predictions that are fairly accurate. This also enables the model to be deployed to production far more seamlessly.
+
+1.  Gradient Boosted Model for Overall Condition
+2.  Gradient Boosted Model for CCTV Condition
+
+#### Optimization of Models
+
+Optimization involves improving the model fit by changing some of the model parameters. When undergoing this process we can
+
+1.  Gradient Boosted Model for Overall Condition
+2.  Gradient Boosted Model for CCTV Condition
+
+#### Validation of Models
+
+The validation of our models is done to assess their overall effectiveness on low confidence data. This is data that involves pipes with no CCTV coverage and also is data that the model has little to no familiarity with. The point of this exercise is to prove that these models are a viable option for predicting condition in the absence of other high confidence data sources.
+
+1.  Gradient Boosted Model for Overall Condition
+2.  Gradient Boosted Model for CCTV Condition
+
+# Wastewater Local Network:
+
+## Analysis: 
+
+### Correlation Analysis: 
+
+### General Trends: 
+
+## Modelling: 
+
+### High Dimensional Modelling for 
+
+## Model Optimization and Regularization: 
+
+# Conclusion:
+
+This data science process used tools to understand patterns in the behaviour of pipes across our Wastewater network. It allowed us to specifically focus on condition, which serves as a proxy for liklihood of failure and how this metric relates to different structural properties of the pipe. Watercare should actively be harnessing the utility of predictive modelling and machine learning in order to continue developing a proactive asset management plan.
+
+## Recommendations:
+
+1.  To investigate the usage of Neural Networks in these predictive models. Due to hardware constraints this was harder to implement on this machine. However, there is scope for Neural Network models to provide better predictive accuracy, especially if more and more pipes become a part of the network.
+2.  To deploy chosen models for usage when there is an absence of observed data. Especially in the context of higher dimensional models for the structural condition of a pipe where CCTV data is not available.
+3.  To integrate data from larger FME into a database that is on some sort of cloud server. In doing so, a deployed model would be able to update it's predictions as new data becomes available as it would be able to directly speak to the dataset.
+4.  To use segmented modelling and correlation analysis as a basis for the condition scoring framework. There are established statistical relationships with different variables and the structural condition of these pipes.
+5.  Potentially look at developing an inhouse Computer Vision model that is able to use visual data in order to predict condition. Especially in pipes that are predicting are more likely to fail going into the future (possibly a condition of 2-3 right now) as we know their condition is going to deteriorate in the future.
+6.  Continue to improve the data collection, storage and maintenance process for our pipes so that insight can be extracted from them with ease.

@@ -38,21 +38,8 @@ ggplot(WWT.analysis, aes(x = INSTALLED, y = condition_overall_score, color = MAT
 )
 
 
-WWT.analysis <- WWT.analysis %>%
-  mutate(age = 2024 - INSTALLED)
-
-ggplot(WWT.analysis, aes(x = age, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
-  x = "Age of pipe",
-  y = "Condition Score",
-  title = "Relationship between the age of the pipe and it's condition"
-)
-
-
 
 ```
-
-
-
 ```{r}
 ggplot(WWT.analysis, aes(x = NOM_DIA_MM, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "gam", col = "blue") + labs(
   x = "Nominal Diameter of Pipe",
@@ -67,13 +54,9 @@ ggplot(WWT.analysis, aes(x = LENGTH, y = condition_overall_score, color = MATERI
   title = "Relationship between the length of the pipe and it's condition"
 ) + xlim(0, 1000)
 ```
-
-
-
 ```{r}
 ggplot(WWT.analysis, aes(x = condition_overall_score)) + geom_histogram() + labs(x = "Distribution of condtion across our wastewater local network")
 ```
-
 ```{r}
 ggplot(WWT.analysis, aes(x = criticality_overall_score, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
   x = "Criticality",
@@ -81,8 +64,6 @@ ggplot(WWT.analysis, aes(x = criticality_overall_score, y = condition_overall_sc
   title = "Relationship between Crticality and Condition"
 )
 ``` 
-^This is very good
-
 ```{r}
 ggplot(WWT.analysis, aes(x = condition_CCTV_app_availability, y = condition_overall_score)) + geom_violin() + labs(
   title = "Relationship between the availability of CCTV and Condition",
@@ -93,9 +74,6 @@ ggplot(WWT.analysis, aes(x = condition_CCTV_app_availability, y = condition_over
 ```{r}
 ggplot(WWT.analysis, aes(x = condition_CCTV_score, y = condition_overall_score)) + geom_jitter(width = 0.2, height = 0.2, alpha = 0.6)
 ```
-highly correlated (makes a lot of sense)
-
-
 ```{r}
 
 library(ggcorrplot)

@@ -13,41 +13,41 @@ WL_prior <- read_xlsx("C:/Users/SSabharwal/OneDrive - Watercare Services Limited
 # Below is the cleaning and restructuring process we are going to undertake to produce our descriptive dataframe
 
 
-WL_prior <- WL_prior %>% select(-GIS_ID)
-WL_prior <- WL_prior %>% select(-EQUIP_ID)
-WL_prior <- WL_prior %>% select(-COMPKEY)
-WL_prior <- WL_prior %>% select(-FAC_CODE)
-WL_prior <- WL_prior %>% select(-FAC_DESC)
-WL_prior <- WL_prior %>% select(-POSITION)
-WL_prior <- WL_prior %>% select(-STATUS)
-WL_prior <- WL_prior %>% select(-ACCURACY)
-WL_prior <- WL_prior %>% select(-TYPE)
-WL_prior <- WL_prior %>% select(-DATASOURCE)
-WL_prior <- WL_prior %>% select(-SERVICE)
-WL_prior <- WL_prior %>% select(-SUBTYPE)
-WL_prior <- WL_prior %>% select(-HACOMPKEY)
-WL_prior <- WL_prior %>% select(-OWN)
-WL_prior <- WL_prior %>% select(-F_IwiAOI)
-WL_prior <- WL_prior %>% select(-constructability_Confidence_Scenario)
-WL_prior <- WL_prior %>% select(-constructability_location_scoring)
-WL_prior <- WL_prior %>% select(-constructability_location_scoring_dataset_s_)
-WL_prior <- WL_prior %>% select(-constructability_environmental_scoring)
-WL_prior <- WL_prior %>% select(-constructability_traffic_scoring)
-WL_prior <- WL_prior %>% select(-constructability_traffic_scoring_dataset_s_)
-WL_prior <- WL_prior %>% select(-constructability_stakeholder_scoring)
-WL_prior <- WL_prior %>% select(-constructability_stakeholder_scoring_dataset_s_)
-WL_prior <- WL_prior %>% select(-SHAPE_Length)
-WL_prior <- WL_prior %>% select(-`cumulative length`)
-WL_prior <- WL_prior %>% select(-`Plan for`)
-WL_prior <- WL_prior %>% select(-`Cost estimate ($)`)
-WL_prior <- WL_prior %>% select(-...56)
-WL_prior <- WL_prior %>% select(-`Cost per year`)
-WL_prior <- WL_prior %>% select(-...58)
-WL_prior <- WL_prior %>% select(-...59)
-WL_prior <- WL_prior %>% select(-...60)
-WL_prior <- WL_prior %>% select(-PROCESS)
-WL_prior <- WL_prior %>% select(-GRP)
-WL_prior <- WL_prior %>% select(-LINING)
+WL_prior <- WL_prior %>% dplyr::select(-GIS_ID)
+WL_prior <- WL_prior %>% dplyr::select(-EQUIP_ID)
+WL_prior <- WL_prior %>% dplyr::select(-COMPKEY)
+WL_prior <- WL_prior %>% dplyr::select(-FAC_CODE)
+WL_prior <- WL_prior %>% dplyr::select(-FAC_DESC)
+WL_prior <- WL_prior %>% dplyr::select(-POSITION)
+WL_prior <- WL_prior %>% dplyr::select(-STATUS)
+WL_prior <- WL_prior %>% dplyr::select(-ACCURACY)
+WL_prior <- WL_prior %>% dplyr::select(-TYPE)
+WL_prior <- WL_prior %>% dplyr::select(-DATASOURCE)
+WL_prior <- WL_prior %>% dplyr::select(-SERVICE)
+WL_prior <- WL_prior %>% dplyr::select(-SUBTYPE)
+WL_prior <- WL_prior %>% dplyr::select(-HACOMPKEY)
+WL_prior <- WL_prior %>% dplyr::select(-OWN)
+WL_prior <- WL_prior %>% dplyr::select(-F_IwiAOI)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_Confidence_Scenario)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_location_scoring)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_location_scoring_dataset_s_)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_environmental_scoring)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_traffic_scoring)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_traffic_scoring_dataset_s_)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_stakeholder_scoring)
+WL_prior <- WL_prior %>% dplyr::select(-constructability_stakeholder_scoring_dataset_s_)
+WL_prior <- WL_prior %>% dplyr::select(-SHAPE_Length)
+WL_prior <- WL_prior %>% dplyr::select(-`cumulative length`)
+WL_prior <- WL_prior %>% dplyr::select(-`Plan for`)
+WL_prior <- WL_prior %>% dplyr::select(-`Cost estimate ($)`)
+WL_prior <- WL_prior %>% dplyr::select(-...56)
+WL_prior <- WL_prior %>% dplyr::select(-`Cost per year`)
+WL_prior <- WL_prior %>% dplyr::select(-...58)
+WL_prior <- WL_prior %>% dplyr::select(-...59)
+WL_prior <- WL_prior %>% dplyr::select(-...60)
+WL_prior <- WL_prior %>% dplyr::select(-PROCESS)
+WL_prior <- WL_prior %>% dplyr::select(-GRP)
+WL_prior <- WL_prior %>% dplyr::select(-LINING)
 
 
 #We also need to do something about the concatenated break dates
@@ -66,12 +66,12 @@ WL_prior <- WL_prior %>%
 
 
 Failure.count <- WL_prior %>% 
-  group_by(OBJECTID) %>% 
-  summarise(BreakDateCount = n(), .groups = "drop")
+  dplyr::group_by(OBJECTID) %>% 
+  dplyr::summarise(BreakDateCount = n(), .groups = "drop")
 
 
 # This is so that we can have a dataframe with breakdate counts in them
-WL_prior1 <- WL_prior %>% select(-`_concatenated_break_dates`)
+WL_prior1 <- WL_prior %>% dplyr::select(-`_concatenated_break_dates`)
 
 WL_prior1 <- WL_prior1 %>% distinct(OBJECTID, .keep_all = TRUE)
 
@@ -83,8 +83,6 @@ WL_prior1 <- WL_prior1 %>%
   mutate(BreakDateCount = BreakDateCount - 1)
 
 
-WL_prior1 <- WL_prior1 %>% select(-OBJECTID)
-WL_prior <- WL_prior %>% select(-OBJECTID)
 
 
 
@@ -160,16 +158,17 @@ WL_prior$condition_Confidence_Scenario <- recode_factor(WL_prior$condition_Confi
 # We have now prepared the dataframe for analysis
 
 
-WL_prior.analysis <- WL_prior
+WL.analysis <- WL_prior
 
 # We now need to prepare the dataframe for modelling
 
-WL_prior.modelling <- WL_prior[, 1:10]
+WL.modelling <- WL_prior[, 1:10]
 
 
 
-
-
+# We then write both of these dataframes to csv so that they can be used across other directories 
+write.csv(WL.modelling, "WL.modelling.csv", row.names = FALSE)
+write.csv(WL.analysis,"WL.analysis.csv", row.names = FALSE)
 
 
 

@@ -1,0 +1,94 @@
+```{r}
+library(finalfit)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(corrplot)
+library(naniar)
+library(keras)
+library(glmnet)
+library(xgboost)
+library(finalfit)
+library(rpart)
+library(MASS)
+library(ranger)
+
+WWL.analysis <- read_csv("WWL.analysis.csv")
+WWL.analysis %>% missing_plot()
+```
+```{r}
+head(WWL.analysis)
+```
+We are going to have to restructure this dataframe as well to make it more 
+
+
+
+
+```{r}
+ggplot(WWL.analysis, aes(x = MATERIAL, y = condition_overall_score, fill = MATERIAL)) + geom_boxplot() + labs(
+  title = "Relationship between Material and Condition",
+  x = "Material",
+  y = "Condition Score"
+)
+```
+This graph tells us absolutely nothing and is an indication that there are just too many pipes with a condition of 1. This needs to be fixed in some way. One of these ways would be to only do analysis on the pipes that are not of condition 1. Another way of doing this would be to scale down the dataframe by doing analysis on a random sample of it, intentionally underweighting the class of condition 1. In doing so we can look at a more unbiased set of data, because unfortunately all of our results are skewed
+
+```{r}
+
+
+
+suburbs <- WWL.analysis %>% 
+  group_by(Suburb) %>% 
+  summarize( 
+    pipe_count = n(), 
+    Mean_Condition = mean(condition_overall_score, na.rm=TRUE),
+    Median_Condition = median(condition_overall_score, na.rm=TRUE),
+    Mode_Condition = as.numeric(names(sort(-table(condition_overall_score)))[1])
+    )
+
+head(suburbs)
+```
+
+Correlation Analysis 
+```{r}
+
+library(ggcorrplot)
+
+
+WWT.analysis.numeric <- WWT.analysis %>% select_if(is.numeric)
+
+
+good.names <- WWT.analysis.numeric %>% 
+  rename(
+    Diameter = `NOM_DIA_MM`,
+    Cond = `condition_overall_score`,
+    Cond_Label = `condition_overall_score_label`,
+    Cond_Instability = `condition_instability_score`,
+    Cond_Corros = `condition_corrosivity_score`,
+    Cond_Age = `condition_age_score`,
+    Criticality = `criticality_overall_score`,
+    Criticality_Label = `criticality_overall_score_label`,
+    Criticality_Ops = `criticality_operational_score`,
+    Criticality_Pipe = `criticality_pipe_type_score`,
+    Criticality_People = `criticality_people_impacts_score`,
+    Criticality_Enviro = `criticality_environmental_impacts_score`,
+    Criticality_Failure = `criticality_impact_of_failure_score`,
+    Criticality_Infil = `criticality_infiltration_score`,
+    Criticality_Flow = `criticality_flow_ratio`,
+    Risk = `Risk-score`
+  )
+
+
+#### Run Correlation ####
+good.corr <- cor(good.names)
+
+#### Replot ####
+p <- ggcorrplot::ggcorrplot(good.corr, 
+           type = "lower")
+
+
+p + theme(
+  axis.text.x = element_text(angle = 90, hjust = 1))
+
+```

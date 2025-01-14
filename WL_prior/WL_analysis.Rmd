@@ -1,13 +1,459 @@
-Time to first failure analysis 
-Correlation Analysis 
-Material/Lining
+```{r}
+library(finalfit)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(corrplot)
+library(naniar)
+library(keras)
+library(glmnet)
+library(xgboost)
+library(finalfit)
+library(rpart)
+library(MASS)
+library(ranger)
+
+WL.analysis <- read_csv("WL.analysis.csv")
+head(WL.analysis)
+```
+Material
+
+```{r}
+ggplot(WL.analysis, aes(x = MATERIAL, y = condition_overall_score, fill = MATERIAL)) + geom_boxplot() + labs(
+  title = "Relationship between Material and Condition",
+  x = "Material",
+  y = "Condition Score"
+)
+```
+
 Age Analysis
-Failure Count Analysis
-Survival Analysis 
-Age and frequency of failure
-Key Customer Category Analysis
-Data Sources and Missing Data 
-Confidence Sources Analysis
+
+```{r}
+ggplot(WL.analysis, aes(x = INSTALLED, y = condition_overall_score, color = MATERIAL)) + geom_point() + labs(
+  x = "Year of installation",
+  y = "Condition Score",
+  title = "Relationship between the installation year of the pipe and it's condition"
+)
 
 
 
+ggplot(WL.analysis, aes(x = INSTALLED, y = condition_overall_score, color = MATERIAL)) + geom_point() + geom_smooth(method = "lm", col = "blue") + labs(
+  x = "Age of pipe",
+  y = "Condition Score",
+  title = "Relationship between the age of the pipe and it's condition"
+)
+
+```
+
+```{r}
+head(WL.analysis)
+```
+
+
+Time to first failure analysis
+
+```{r}
+
+WL.analysis.clean <- WL.analysis %>% filter(!is.na(INSTALLED), !is.na(`_concatenated_break_dates`))
+result <- WL.analysis.clean %>%
+  arrange(`_concatenated_break_dates`) %>% # 1. Arrange by earliest break date
+  distinct(OBJECTID, MATERIAL, INSTALLED, NOM_DIA_MM, LENGTH, `_concatenated_break_dates`, condition_overall_score, condition_overall_score_label, 
+           condition_leak_history_overall_score, condition_likelihood_of_failure_overall_score, condition_Confidence_Scenario, 
+           constructability_overall_score, constructability_overall_score_label, constructability_environmental_scoring_dataset_s_, 
+           criticality_overall_score, criticality_overall_score_label, criticality_key_customer_category, criticality_key_customer_score,
+           criticality_capacity_score, criticality_customer_affected_score, criticality_pipe_ranking_score, criticality_other_critical_asset_score, criticality_other_critical_asset_dataset_s_, criticality_Confidence_Scenario, `Risk-score`,
+           c.keep_all = TRUE) # 2. Remove duplicate pipes
+
+head(result)
+```
+
+
+```{r}
+# Calculate the difference between installation year and first break date
+result$time_to_first_failure <- year(result$`_concatenated_break_dates`) - year(result$INSTALLED)
+
+library(fitdistrplus)
+
+ggplot(result, aes(x = time_to_first_failure)) +
+  geom_histogram(aes(y = ..density..), binwidth = 0.5, color = "black", fill = "blue", position = "identity") +
+  labs(title = "Distribution of Time to First Failure", x = "Time to First Failure", y = "Frequency") + 
+  theme_minimal()
+```
+```{r}
+head(result)
+positive <- result$time_to_first_failure[result$time_to_first_failure > 0]
+fit_norm <- fitdist(positive, "norm")
+fit_weibull <- fitdist(positive, "weibull", method = "mle", lower = c(0, 0))
+fit_gamma <- fitdist(positive, "gamma", method = "mle", lower = c(0, 0), start = list(scale = 1, shape = 1))
+fit_lnorm <- fitdist(positive, "lnorm")
+
+fit_norm
+fit_weibull
+fit_gamma
+fit_lnorm
+```
+```{r}
+ggplot(result, aes(x = time_to_first_failure)) +
+  # Histogram
+  geom_histogram(aes(y = ..density..), binwidth = 0.5, color = "black", fill = "blue", position = "identity") +
+  
+  # Normal Distribution
+  stat_function(
+    fun = dnorm, 
+    args = list(mean = fit_norm$estimate["mean"], sd = fit_norm$estimate["sd"]), 
+    aes(color = "Normal"), size = 1
+  ) +
+  
+  # Weibull Distribution
+  stat_function(
+    fun = dweibull, 
+    args = list(shape = fit_weibull$estimate["shape"], scale = fit_weibull$estimate["scale"]), 
+    aes(color = "Weibull"), size = 1
+  ) +
+  
+  # Gamma Distribution
+  stat_function(
+    fun = dgamma, 
+    args = list(shape = fit_gamma$estimate["shape"], rate = fit_gamma$estimate["rate"]), 
+    aes(color = "Gamma"), size = 1
+  ) +
+  
+  # Log-Normal Distribution
+  stat_function(
+    fun = dlnorm, 
+    args = list(meanlog = fit_lnorm$estimate["meanlog"], sdlog = fit_lnorm$estimate["sdlog"]), 
+    aes(color = "Log-Normal"), size = 1
+  ) +
+  
+  # Labels and Theme
+  labs(
+    title = "Distribution of Time to First Failure",
+    x = "Time to First Failure",
+    y = "Density",
+    color = "Distributions"  # Legend title
+  ) +
+  theme_minimal()
+```
+Visually speaking it looks as if this is a combination of several different distributions. What might be more useful is to do a segmented analysis so that we can fit distributions to parts of the network that might exhibit similar behaviour. The best way to do this would be to split the data based on material, and then further split it based on it's installation date (broad groups of installatio dates)
+
+
+```{r}
+# Generate observed densities 
+observed <- hist(positive, breaks = 30, plot = F)
+observed_x <- observed$mids
+observed_y <- observed$density
+
+#Compare predicted densities for each distribution 
+predicted_norm <- dnorm(observed_x, mean = fit_norm$estimate["mean"], sd = fit_norm$estimate["sd"])
+predicted_weibull <- dweibull(observed_x, shape = fit_weibull$estimate["shape"], scale = fit_weibull$estimate["scale"])
+predicted_gamma <- dgamma(observed_x, shape = fit_gamma$estimate["scale"], rate = fit_gamma$estimate["shape"])
+predicted_lnorm <- dlnorm(observed_x, meanlog = fit_lnorm$estimate["meanlog"], sdlog = fit_lnorm$estimate["sdlog"])
+
+rmse <- function(observed, predicted) {
+  sqrt(mean((observed-predicted)^2))
+}
+
+rmse_norm <- rmse(observed_y, predicted_norm)
+rmse_weibull <- rmse(observed_y, predicted_weibull)
+rmse_gamma <- rmse(observed_y, predicted_gamma)
+rmse_lnorm <- rmse(observed_y, predicted_lnorm)
+
+
+
+performance_metrics <- data.frame(
+  Distribution = c("normal", "weibull", "gamma", "log_normal"), 
+  RMSE = c(rmse_norm, rmse_weibull, rmse_gamma, rmse_lnorm)
+)
+
+
+performance_metrics
+```
+
+Doing a segemented time to first failure analysis, filtering it out based on age, diameter, material and installation date
+
+
+```{r}
+result$MATERIAL <- factor(result$MATERIAL)
+
+MATERIALS <- split(result, result$MATERIAL)
+
+
+AC.analysis <- MATERIALS$AC
+ALK.analysis <- MATERIALS$ALK
+CI.analysis <- MATERIALS$CI
+CLS.analysis <- MATERIALS$CLS
+CONC.analysis <- MATERIALS$CONC
+CU.analysis <- MATERIALS$CU
+DI.analysis <- MATERIALS$DI
+MS.analysis <- MATERIALS$MS
+PE.analysis <- MATERIALS$PE
+PP.analysis <- MATERIALS$PP
+PVCU.analysis <- MATERIALS$`PVC-U`
+
+
+
+
+```
+
+
+
+
+Defining a new function that produces 9 different plots. Each plot will have a sample distrubtion and several fitted distribution. 
+
+```{r}
+
+dist.fitter <- function(data){
+  
+  positive <- data$time_to_first_failure[data$time_to_first_failure > 0]
+  fit_norm <- fitdist(positive, "norm")
+  fit_weibull <- fitdist(positive, "weibull", method = "mle", lower = c(0, 0))
+  fit_gamma <- fitdist(positive, "gamma", method = "mle", lower = c(0, 0), start = list(scale = 1, shape = 1))
+  fit_lnorm <- fitdist(positive, "lnorm")
+  
+  
+  
+  
+  plot <- ggplot(data, aes(x = positive)) +
+  # Histogram
+  geom_histogram(aes(y = ..density..), binwidth = 0.5, color = "black", fill = "blue", position = "identity") +
+  
+  # Normal Distribution
+  stat_function(
+    fun = dnorm, 
+    args = list(mean = fit_norm$estimate["mean"], sd = fit_norm$estimate["sd"]), 
+    aes(color = "Normal"), size = 1
+  ) +
+  
+  # Weibull Distribution
+  stat_function(
+    fun = dweibull, 
+    args = list(shape = fit_weibull$estimate["shape"], scale = fit_weibull$estimate["scale"]), 
+    aes(color = "Weibull"), size = 1
+  ) +
+  
+  # Gamma Distribution
+  stat_function(
+    fun = dgamma, 
+    args = list(shape = fit_gamma$estimate["shape"], rate = fit_gamma$estimate["rate"]), 
+    aes(color = "Gamma"), size = 1
+  ) +
+  
+  # Log-Normal Distribution
+  stat_function(
+    fun = dlnorm, 
+    args = list(meanlog = fit_lnorm$estimate["meanlog"], sdlog = fit_lnorm$estimate["sdlog"]), 
+    aes(color = "Log-Normal"), size = 1
+  ) +
+  
+  # Labels and Theme
+  labs(
+    title = "Distribution of Time to First Failure",
+    x = "Time to First Failure",
+    y = "Density",
+    color = "Distributions"  # Legend title
+  ) +
+  theme_minimal()
+  
+  
+  observed <- hist(positive, breaks = 30, plot = F)
+  observed_x <- observed$mids
+  observed_y <- observed$density
+  
+  #Compare predicted densities for each distribution 
+  predicted_norm <- dnorm(observed_x, mean = fit_norm$estimate["mean"], sd = fit_norm$estimate["sd"])
+  predicted_weibull <- dweibull(observed_x, shape = fit_weibull$estimate["shape"], scale = fit_weibull$estimate["scale"])
+  predicted_gamma <- dgamma(observed_x, shape = fit_gamma$estimate["scale"], rate = fit_gamma$estimate["shape"])
+  predicted_lnorm <- dlnorm(observed_x, meanlog = fit_lnorm$estimate["meanlog"], sdlog = fit_lnorm$estimate["sdlog"])
+
+  
+  rmse_norm <- rmse(observed_y, predicted_norm)
+  rmse_weibull <- rmse(observed_y, predicted_weibull)
+  rmse_gamma <- rmse(observed_y, predicted_gamma)
+  rmse_lnorm <- rmse(observed_y, predicted_lnorm)
+  
+  
+  
+  performance_metrics <- data.frame(
+    Distribution = c("normal", "weibull", "gamma", "log_normal"), 
+    RMSE = c(rmse_norm, rmse_weibull, rmse_gamma, rmse_lnorm)
+  )
+  
+  print(plot)
+  
+  return(performance_metrics)
+    
+}
+
+
+
+
+
+```
+
+AC analysis
+```{r}
+
+#General 
+dist.fitter(AC.analysis)
+
+
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+```
+
+
+
+ALK analysis 
+```{r}
+#General
+dist.fitter(ALK.analysis)
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+
+CI analysis
+```{r}
+#General
+dist.fitter(CI.analysis)
+
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+CLS analysis
+```{r}
+#General
+
+dist.fitter(CLS.analysis)
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+
+CONC analysis 
+```{r}
+dist.fitter(CONC.analysis)
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+CU analysis 
+```{r}
+dist.fitter(CU.analysis)
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+DI analysis 
+```{r}
+
+dist.fitter(DI.analysis)
+
+
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+
+MS analysis
+```{r}
+
+dist.fitter(MS.analysis)
+
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+
+PE analysis 
+```{r}
+
+
+dist.fitter(PE.analysis)
+
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+
+
+PP analysis
+```{r} 
+
+dist.fitter(PP.analysis)
+
+
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+PVC-U analysis
+```{r}
+
+
+
+dist.fitter(PVCU.analysis)
+#Pipes pre 1930
+
+#Pipes between 1930 and 1970 
+
+#Pioes after 1970
+
+```
+
+
+
+## Correlation Analysis 
+
+
+## Survival Analysis
+
+
+## Key Customer Category Analysis
+
+
+##Data Sources and Missing Data
+
+
+## Confidence Sources Analysis

@@ -1,3 +1,8 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
 ```{r include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
 
@@ -28,7 +33,8 @@ WWT.modelling$condition_overall_score_label <- as.factor(WWT.modelling$condition
 ```
 
 
-## Waste Water Transmission Network Modelling 
+## Waste Water Transmission Network Modelling (High Dimensional Machine Learning Models)
+
 
 ```{r}
 WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(WWT.modelling), "condition_overall_score_label"))] 
@@ -36,7 +42,7 @@ WWT.modelling <- WWT.modelling[c("condition_overall_score_label", setdiff(names(
 
 ### Creating Training and Testing Datasets
 
-The first thing to do would be to separate the WWT data set into CCTV positive and CCTV negative aand then further remove variables that are not going to inform our predictive models. 
+The first thing to do would be to separate the WWT data set into CCTV positive and CCTV negative and then further remove variables that are not going to inform our predictive models. 
 
 ```{r}
 WWT.yes <- WWT.modelling %>% filter(condition_CCTV_app_availability == "yes")
@@ -52,7 +58,7 @@ WWT.no <- WWT.no[, -9]
 
 Unfortunately, when we do this split, the high cctv availability pipes have no pipes with a condition of 5. This is going to be probablmatic, as cctv availablity pipes are going to be our training data. This means that our model will have no knowledge on how to predict level 5 condition pipes. 
 
-We need to maintain a distribution of our condition that is consistent with our population dataset 
+We need to maintain a distribution of our condition that is consistent with our population dataset.
 
 ```{r}
 summary(WWT.modelling$condition_overall_score_label)
@@ -85,8 +91,10 @@ WWT.yes.test <- WWT.yes[-sample.index, ]
 ```
 
 
-### Decision Tree 
 
+### Modelling function 
+
+### Decision Tree 
 
 ```{r}
 
@@ -201,21 +209,549 @@ confMatrix7 <- table(Actual = WWT.no.label,
 confMatrix7
 sum(diag(confMatrix7)) / length(WWT.no.label)
 ```
-#### Model Performance
+
+
+## Wastewater Transmission Network Modelling on CCTV Condition rather than overall condition (High Dimensional Machine Learning Models)
+
+Dropping overall condition as this is no longer relevant to the modelling we are trying to do 
+
+```{r}
+WWT.modelling <- WWT.modelling %>% dplyr::select(-condition_overall_score_label)
+```
+
+### Creating Training and Testing Datasets
+
+
+```{r}
+WWT.yes <- WWT.modelling %>% filter(condition_CCTV_app_availability == "yes")
+WWT.no <- WWT.modelling %>% filter(condition_CCTV_app_availability == "no")
+missing_plot(WWT.yes)
+missing_plot(WWT.no)
+
+```
+```{r}
+WWT.yes <- WWT.yes %>% dplyr::select(-condition_CCTV_app_availability)
+WWT.no <- WWT.no %>% dplyr::select(-condition_CCTV_app_availability)
+
+```
+
+Unfortunately, when we do this split, the high cctv availability pipes have no pipes with a condition of 5. This is going to be probablmatic, as cctv availablity pipes are going to be our training data. This means that our model will have no knowledge on how to predict level 5 condition pipes. 
+
+We need to maintain a distribution of our condition that is consistent with our population dataset 
+
+```{r}
+summary(WWT.modelling$condition_CCTV_score)
+```
+```{r}
+summary(WWT.yes$condition_CCTV_score)
+summary(WWT.no$condition_CCTV_score)
+```
+I think the only statistically sound way to fix this is to migrate some low confidence data to the high confidence data (map some pipes from no cctv availability to yes cctv availability) 
+
+
+```{r}
+set.seed(123)
+rows_to_move <- which(WWT.no$condition_CCTV_score== "5")
+num_to_select <- min(5, length(rows_to_move))
+selected_rows <- sample(rows_to_move, num_to_select)
+
+WWT.yes <- WWT.yes %>% rbind(WWT.no[selected_rows, ])
+WWT.no <- WWT.no[-selected_rows,]
+
+
+summary(WWT.yes$condition_CCTV_score)
+summary(WWT.no$condition_CCTV_score)
+```
+We are also going to have to drop the "None" category as we are trying to predict the CCTV condition of the pipe whether or not there is cctv availability or a score has been previously taken, so this will be entirely removed from our predictions 
+```{r}
+WWT.yes <- WWT.yes %>% filter(condition_CCTV_score != "None")
+WWT.no <- WWT.no %>% filter(condition_CCTV_score != "None")
+```
 
 
 
-### Artificial Neural Network Model
+
+Make some training and testng datasets
+```{r}
+set.seed(749)
+sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
+WWT.yes.train <- WWT.yes[sample.index, ]
+WWT.yes.test <- WWT.yes[-sample.index, ]
+```
+
+
+### Decision Tree 
+
+```{r}
+condition.tree1 <- rpart(condition_CCTV_score~., data = WWT.yes.train)
+plotcp(condition.tree1)
+```
+```{r}
+predict1 <- predict(condition.tree1, WWT.yes.test, type = "class")
+confMatrix1 <- table(Actual = WWT.yes.test$condition_CCTV_score, Predicted = predict1)
+confMatrix1
+```
+
+```{r}
+sum(diag(confMatrix1)) / nrow(WWT.yes.test)
+```
+```{r}
+plot(condition.tree1, margin = 0.02)
+text(condition.tree1, pretty = 2)
+```
+
+```{r}
+printcp(condition.tree1)
+```
+#### Prediction on low confidence dataset
+
+```{r}
+predict2 <- predict(condition.tree1, WWT.no, type = "class")
+confMatrix2 <- table(Actual = WWT.no$condition_CCTV_score, Predicted = predict2)
+confMatrix2
+sum(diag(confMatrix2)) / nrow(WWT.no)
+```
 
 
 
-#### Model Performance
+### Random Forest
+
+
+```{r}
+rf_model <- ranger(condition_CCTV_score ~ ., data = WWT.yes.train, trees = 10000, mtry = 5)
+predict3 <- predict(rf_model, WWT.yes.test)$predictions
+confMatrix3 <- table(Actual = WWT.yes.test$condition_CCTV_score, Predicted = predict3)
+confMatrix3
+sum(diag(confMatrix3)) / nrow(WWT.yes.test)
+```
+
+
+#### Predictions on low confidence dataset 
+
+```{r}
+predict4 <- predict(rf_model, WWT.no)$predictions
+confMatrix4 <- table(Actual = WWT.no$condition_CCTV_score, Predicted = predict4)
+confMatrix4
+sum(diag(confMatrix4)) / nrow(WWT.no)
+```
+
+
+### Gradient Boosting Model
+
+```{r}
+# Convert data frames to matricies and make data and label sets 
+library(gbm)
+
+
+WWT.yes.train.matrix <- model.matrix(~. - 1, WWT.yes.train[, -1])
+WWT.yes.train.label <- as.integer(WWT.yes.train$condition_CCTV_score) - 1
+
+WWT.yes.test.matrix <- model.matrix(~. -1 , WWT.yes.test[,-1])
+WWT.yes.test.label <- as.integer(WWT.yes.test$condition_CCTV_score) -1 
+
+WWT.no <- na.omit(WWT.no)
+WWT.no.matrix <- model.matrix(~. -1 , WWT.no[,-1])
+WWT.no.label <- as.integer(WWT.no$condition_CCTV_score) -1
+
+```
+
+
+```{r}
+boosted.conditiontree1 <- xgboost(data = WWT.yes.train.matrix, label = WWT.yes.train.label, max_depth = 3, min_child_weight = 5, eta = 1, nthreads = 2, nrounds = 20, num_class = 6, objective = "multi:softmax", verbose = 1, lambda = 1 )
+```
+
+```{r}
+xgb.plot.tree(model = boosted.conditiontree1)
+```
+
+
+```{r}
+pred5 <- predict(boosted.conditiontree1, WWT.yes.test.matrix)
+confMatrix5 <- table(Actual = WWT.yes.test.label, 
+      Predicted = pred5) 
+confMatrix5
+sum(diag(confMatrix5)) / nrow(WWT.yes.test.matrix)
+```
+```{r}
+pred6 <- predict(boosted.conditiontree1, WWT.no.matrix)
+confMatrix6 <- table(Actual = WWT.no.label, 
+      Predicted = pred6) 
+confMatrix6
+sum(diag(confMatrix6)) / length(WWT.no.label)
+```
+Gradient Boosted Model needs some regularisation in order to be effective for larger data sets
 
 
 
+## Wastewater Transmission Network Modelling on CCTV condition (Segmented models)
 
-## Model Choice and Justifcation 
+```{r}
+WWT.modelling <- read_csv("WWT.modelling.csv")
+WWT.modelling <- WWT.modelling %>% mutate_if(is.character, as.factor)
 
+```
+
+
+```{r}
+WWT.yes <- WWT.modelling %>% filter(condition_CCTV_app_availability == "yes")
+WWT.no <- WWT.modelling %>% filter(condition_CCTV_app_availability == "no")
+missing_plot(WWT.yes)
+missing_plot(WWT.no)
+
+```
+```{r}
+WWT.yes <- WWT.yes %>% dplyr::select(-condition_CCTV_app_availability)
+WWT.no <- WWT.no %>% dplyr::select(-condition_CCTV_app_availability)
+
+```
+```{r}
+summary(WWT.modelling$condition_CCTV_score)
+```
+```{r}
+summary(WWT.yes$condition_CCTV_score)
+summary(WWT.no$condition_CCTV_score)
+```
+
+
+```{r}
+set.seed(123)
+rows_to_move <- which(WWT.no$condition_CCTV_score== "5")
+num_to_select <- min(5, length(rows_to_move))
+selected_rows <- sample(rows_to_move, num_to_select)
+
+WWT.yes <- WWT.yes %>% rbind(WWT.no[selected_rows, ])
+WWT.no <- WWT.no[-selected_rows,]
+
+
+summary(WWT.yes$condition_CCTV_score)
+summary(WWT.no$condition_CCTV_score)
+```
+```{r}
+WWT.yes <- WWT.yes %>% filter(condition_CCTV_score != "None")
+WWT.no <- WWT.no %>% filter(condition_CCTV_score != "None")
+```
+
+
+```{r}
+set.seed(749)
+sample.index <- sample(1:nrow(WWT.yes), size = 0.8 * nrow(WWT.yes))
+WWT.yes.train <- WWT.yes[sample.index, ]
+WWT.yes.test <- WWT.yes[-sample.index, ]
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+
+```
+
+
+A new function for predictions to speed up this process 
+```{r}
+predictor1 <- function(model, data){
+  
+  prediction <- predict(model, data)$predictions 
+  confMatrix <- table(Actual = data$condition_CCTV_score, Predicted = prediction)
+  print(confMatrix)
+  print(sum(diag(confMatrix)) / nrow(data))
+}
+predictor2 <- function(model, data){
+  
+  prediction <- predict(model, data)
+  confMatrix <- table(Actual = data$condition_CCTV_score, Predicted = prediction)
+  print(confMatrix)
+  print(sum(diag(confMatrix)) / nrow(data))
+}
+predictor3 <- function(model, data){
+  
+  prediction <- predict(model, data, type = "class")
+  confMatrix <- table(Actual = data$condition_CCTV_score, Predicted = prediction)
+  print(confMatrix)
+  print(sum(diag(confMatrix)) / nrow(data))
+}
+```
+
+
+### Material 
+
+Going to fit a multinomal logistic regression model, decision tree model, random forests, and an SVM.
+
+
+#### Training 
+
+Multinomal logistic 
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+
+Decision Tree Model 
+```{r}
+condition.tree <- rpart(condition_CCTV_score~ MATERIAL, data = WWT.yes.train)
+plotcp(condition.tree)
+
+```
+```{r}
+predictor3(condition.tree, WWT.yes.test)
+plot(condition.tree, margin = 0.02)
+text(condition.tree, pretty = 2)
+```
+```{r}
+rf_model <- ranger(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train, trees = 10000, mtry = 1)
+predictor1(rf_model, WWT.yes.test)
+```
+
+
+
+SVM
+```{r}
+library(e1071)
+svm_model <- svm(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train, kernal = "linear", cost = 1, scale = TRUE)
+summary(svm_model)
+predictor2(svm_model, WWT.yes.test)
+```
+
+
+#### Predictions
+
+Going to take a new random sample of the low confidence dataset on every prediction run 
+```{r}
+# Predictions with the low confidence dataset using the multinomal regression model
+set.seed(1)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton1 <- predictor2(m.logistic, WWT.no.test)
+
+# Predictions with the low confidence dataset using the decision tree model
+set.seed(2)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton2 <- predictor3(condition.tree, WWT.no.test)
+
+
+# Predictions with the low confidence dataset using the random forest model 
+set.seed(3)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton3 <- predictor1(rf_model, WWT.no.test)
+
+# Predictions with the low confidence dataset using the SVM
+set.seed(4)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton4 <- predictor2(svm_model, WWT.no.test)
+
+```
+
+
+
+### Installation Date
+
+#### Training
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+
+Decision Tree Model 
+```{r}
+condition.tree <- rpart(condition_CCTV_score~ MATERIAL, data = WWT.yes.train)
+plotcp(condition.tree)
+
+```
+```{r}
+predictor3(condition.tree, WWT.yes.test)
+plot(condition.tree, margin = 0.02)
+text(condition.tree, pretty = 2)
+```
+```{r}
+rf_model <- ranger(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train, trees = 10000, mtry = 1)
+predictor1(rf_model, WWT.yes.test)
+```
+
+
+
+SVM
+```{r}
+library(e1071)
+svm_model <- svm(condition_CCTV_score ~ MATERIAL, data = WWT.yes.train, kernal = "linear", cost = 1, scale = TRUE)
+summary(svm_model)
+predictor2(svm_model, WWT.yes.test)
+```
+
+
+#### Predictions
+```{r}
+# Predictions with the low confidence dataset using the multinomal regression model
+set.seed(1)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton1 <- predictor2(m.logistic, WWT.no.test)
+
+# Predictions with the low confidence dataset using the decision tree model
+set.seed(2)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton2 <- predictor3(condition.tree, WWT.no.test)
+
+
+# Predictions with the low confidence dataset using the random forest model 
+set.seed(3)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton3 <- predictor1(rf_model, WWT.no.test)
+
+# Predictions with the low confidence dataset using the SVM
+set.seed(4)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton4 <- predictor2(svm_model, WWT.no.test)
+```
+
+### Nominal Diameter
+
+#### Training 
+
+Multinomal Logistic Regression 
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ NOM_DIA_MM, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+
+Decision Tree Model 
+```{r}
+condition.tree <- rpart(condition_CCTV_score~ NOM_DIA_MM, data = WWT.yes.train)
+plotcp(condition.tree)
+
+```
+```{r}
+predictor3(condition.tree, WWT.yes.test)
+plot(condition.tree, margin = 0.02)
+text(condition.tree, pretty = 2)
+```
+```{r}
+rf_model <- ranger(condition_CCTV_score ~ NOM_DIA_MM, data = WWT.yes.train, trees = 10000, mtry = 1)
+predictor1(rf_model, WWT.yes.test)
+```
+
+
+
+SVM
+```{r}
+library(e1071)
+svm_model <- svm(condition_CCTV_score ~ NOM_DIA_MM, data = WWT.yes.train, kernal = "linear", cost = 1, scale = TRUE)
+summary(svm_model)
+predictor2(svm_model, WWT.yes.test)
+```
+
+
+#### Predictions
+```{r}
+# Predictions with the low confidence dataset using the multinomal regression model
+set.seed(1)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton1 <- predictor2(m.logistic, WWT.no.test)
+
+# Predictions with the low confidence dataset using the decision tree model
+set.seed(2)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton2 <- predictor3(condition.tree, WWT.no.test)
+
+
+# Predictions with the low confidence dataset using the random forest model 
+set.seed(3)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton3 <- predictor1(rf_model, WWT.no.test)
+
+# Predictions with the low confidence dataset using the SVM
+set.seed(4)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton4 <- predictor2(svm_model, WWT.no.test)
+```
+
+### Instability
+
+#### Training 
+```{r}
+library(nnet)
+m.logistic <- multinom(condition_CCTV_score ~ condition_instability_score, data = WWT.yes.train)
+predictor2(m.logistic, WWT.yes.test)
+summary(m.logistic)
+```
+
+
+```{r}
+rf_model <- ranger(condition_CCTV_score ~ condition_instability_score, data = WWT.yes.train, trees = 10000, mtry = 1)
+predictor1(rf_model, WWT.yes.test)
+```
+
+
+
+SVM
+```{r}
+library(e1071)
+svm_model <- svm(condition_CCTV_score ~ condition_instability_score, data = WWT.yes.train, kernal = "linear", cost = 1, scale = TRUE)
+summary(svm_model)
+predictor2(svm_model, WWT.yes.test)
+```
+
+#### Predictions
+```{r}
+# Predictions with the low confidence dataset using the multinomal regression model
+set.seed(1)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton1 <- predictor2(m.logistic, WWT.no.test)
+
+
+# Predictions with the low confidence dataset using the random forest model 
+set.seed(3)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton3 <- predictor1(rf_model, WWT.no.test)
+
+# Predictions with the low confidence dataset using the SVM
+set.seed(4)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton4 <- predictor2(svm_model, WWT.no.test)
+```
+### Corrosivity
+
+#### Training
+
+```{r}
+rf_model <- ranger(condition_CCTV_score ~ condition_corrosivity_score, data = WWT.yes.train, trees = 10000, mtry = 1)
+predictor1(rf_model, WWT.yes.test)
+```
+
+
+
+SVM
+```{r}
+library(e1071)
+svm_model <- svm(condition_CCTV_score ~ condition_corrosivity_score, data = WWT.yes.train, kernal = "linear", cost = 1, scale = TRUE)
+summary(svm_model)
+predictor2(svm_model, WWT.yes.test)
+```
+
+#### Predictions
+```{r}
+# Predictions with the low confidence dataset using the multinomal regression model
+set.seed(1)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton1 <- predictor2(m.logistic, WWT.no.test)
+
+# Predictions with the low confidence dataset using the decision tree model
+set.seed(2)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton2 <- predictor3(condition.tree, WWT.no.test)
+
+
+# Predictions with the low confidence dataset using the random forest model 
+set.seed(3)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton3 <- predictor1(rf_model, WWT.no.test)
+
+# Predictions with the low confidence dataset using the SVM
+set.seed(4)
+WWT.no.test <- WWT.no[sample(1:nrow(WWT.no), size = 0.1 * nrow(WWT.no)), ]
+predicton4 <- predictor2(svm_model, WWT.no.test)
+```
 
 
 
